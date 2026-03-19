@@ -28,6 +28,28 @@ CSV_PATH = BASE_DIR / "fuelconsumption3.csv"
 def inject_styles():
     st.markdown("""
         <style>
+        .big-font {
+        font-size:20px !important;
+        color: ##6495ED; 
+        font-weight: bold;
+        }
+                
+    .metric-container {
+            background-color: #f0f2f6; /* Light grey background box */
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px solid #dcdcdc;
+        }
+        .metric-label {
+            color: #555555; /* Medium grey for labels */
+            font-size: 14px;
+            font-weight: bold;
+        }
+        .metric-value {
+            color: #1E1E1E; /* Deep black for the numbers */
+            font-size: 24px;
+            font-weight: bold;
+        }
         .stApp {
             background: radial-gradient(circle at top left, rgba(255, 196, 114, 0.2), transparent 25%),
                         linear-gradient(135deg, #fff8ed 0%, #eef7ff 55%, #e5f7f2 100%);
@@ -246,10 +268,22 @@ with calc_tab:
                     # Display Metrics
                     st.divider()
                     m1, m2, m3 = st.columns(3)
-                    m1.metric("Distance", f"{route['dist_km']:.1f} km")
-                    m2.metric("Traffic Time", f"{route['traffic_min']:.0f} min")
-                    m3.metric("Predicted Cost", f"RM {final_cost:.2f}", 
-                              delta=f"RM {final_cost-(base_liters*fuel_price):.2f} due to traffic")
+
+                    with m1:
+                        st.markdown(f'<div class="metric-container"><p class="metric-label">Distance</p><p class="metric-value">{route["dist_km"]:.1f} km</p></div>', unsafe_allow_html=True)
+
+                    with m2:
+                        st.markdown(f'<div class="metric-container"><p class="metric-label">Traffic Time</p><p class="metric-value">{route["traffic_min"]:.0f} min</p></div>', unsafe_allow_html=True)
+
+                    with m3:
+                        traffic_extra = final_cost - (base_liters * fuel_price)
+                        st.markdown(f'''
+                            <div class="metric-container" style="background-color: #e1f5fe; border: 1px solid #01579b;">
+                                <p class="metric-label" style="color: #01579b;">Predicted Cost</p>
+                                <p class="metric-value" style="color: #01579b;">RM {final_cost:.2f}</p>
+                                <p style="color: #d32f2f; font-size: 12px; margin-top: -10px;">+RM {traffic_extra:.2f} traffic charge</p>
+                            </div>
+                        ''', unsafe_allow_html=True)
 
                     # Map
                     st.pydeck_chart(pdk.Deck(
