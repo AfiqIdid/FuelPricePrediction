@@ -1,0 +1,8 @@
+streamlit
+pandas
+googlemaps
+pydeck
+joblib
+scikit-learn
+streamlit-searchbox
+python-dotenv
