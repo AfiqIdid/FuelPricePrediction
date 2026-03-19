@@ -7,7 +7,7 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.preprocessing import LabelEncoder
 
 # 1. Load the new 2000-2022 data
-df = pd.read_csv('D:/UIA/LAB 1 Python Intsllation with VSCODE-20250306/Machine Learning/Fuel/fuelconsumption2.csv')
+df = pd.read_csv('D:/UIA/LAB 1 Python Intsllation with VSCODE-20250306/Machine Learning/Fuel/fuelconsumption3.csv')
 
 # 2. Select Features and Target
 features = ['ENGINE SIZE', 'CYLINDERS', 'YEAR', 'FUEL', 'VEHICLE CLASS']
@@ -56,6 +56,6 @@ print(f"🎯 Accuracy (within 10% tolerance): {accuracy_within_10:.2f}%")
 print("-" * 30)
 
 # 7. SAVE THE BRAIN
-joblib.dump(model, 'fuel_model.pkl')
-joblib.dump(le_fuel, 'fuel_encoder.pkl')
-joblib.dump(le_class, 'class_encoder.pkl')
+joblib.dump(model, 'fuel_model2.pkl')
+joblib.dump(le_fuel, 'fuel_encoder2.pkl')
+joblib.dump(le_class, 'class_encoder2.pkl')

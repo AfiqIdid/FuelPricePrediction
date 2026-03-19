@@ -22,7 +22,7 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 gmaps = googlemaps.Client(key=GOOGLE_API_KEY)
 
 BASE_DIR = Path(__file__).resolve().parent
-CSV_PATH = BASE_DIR / "fuelconsumption2.csv"
+CSV_PATH = BASE_DIR / "fuelconsumption3.csv"
 
 # --- 2. STYLING ---
 def inject_styles():
@@ -54,22 +54,32 @@ def inject_styles():
         """, unsafe_allow_html=True)
 
 # --- 3. DATA & AI LOADING ---
+def pick_display_value(values):
+    unique_values = sorted({str(value).strip() for value in values if str(value).strip()})
+    preferred_values = [value for value in unique_values if not value.isupper()]
+    return preferred_values[0] if preferred_values else unique_values[0]
+
+
 @st.cache_data
-def load_csv_data():
+def load_csv_data(_csv_mtime_ns):
     df = pd.read_csv(CSV_PATH, low_memory=False)
     cols = ["YEAR", "MAKE", "MODEL", "VEHICLE CLASS", "FUEL", "ENGINE SIZE", "CYLINDERS", "COMB (L/100 km)"]
     df = df[cols].dropna().copy()
     for col in ["MAKE", "MODEL", "VEHICLE CLASS", "FUEL"]:
-        df[col] = df[col].astype(str).str.strip()
+        df[col] = df[col].astype(str).str.strip().str.replace(r"\s+", " ", regex=True)
+    df["MAKE_KEY"] = df["MAKE"].str.upper()
+    df["MODEL_KEY"] = df["MODEL"].str.upper()
+    df["MAKE_DISPLAY"] = df.groupby("MAKE_KEY")["MAKE"].transform(pick_display_value)
+    df["MODEL_DISPLAY"] = df.groupby(["MAKE_KEY", "MODEL_KEY"])["MODEL"].transform(pick_display_value)
     df["YEAR"] = df["YEAR"].astype(int)
     return df.reset_index(drop=True)
 
 @st.cache_resource
 def load_ai_model():
     try:
-        model = joblib.load('fuel_model.pkl')
-        le_fuel = joblib.load('fuel_encoder.pkl')
-        le_class = joblib.load('class_encoder.pkl')
+        model = joblib.load('fuel_model2.pkl')
+        le_fuel = joblib.load('fuel_encoder2.pkl')
+        le_class = joblib.load('class_encoder2.pkl')
         return model, le_fuel, le_class
     except:
         return None, None, None
@@ -113,7 +123,7 @@ def get_route_info(start, end, dep_time: datetime):
 
 # --- 5. INITIALIZATION ---
 inject_styles()
-vehicle_df = load_csv_data()
+vehicle_df = load_csv_data(CSV_PATH.stat().st_mtime_ns)
 model, le_fuel, le_class = load_ai_model()
 
 if "history" not in st.session_state:
@@ -132,12 +142,40 @@ st.title("🚗 Fuel Trip Cost Predictor")
 # Vehicle Selection Area
 with st.expander("🚙 Select Vehicle Model", expanded=True):
     c1, c2, c3 = st.columns(3)
-    brand = c1.selectbox("Brand", sorted(vehicle_df["MAKE"].unique()), 
-                         index=sorted(vehicle_df["MAKE"].unique()).index("PERODUA") if "PERODUA" in vehicle_df["MAKE"].unique() else 0)
-    model_name = c2.selectbox("Model", sorted(vehicle_df[vehicle_df["MAKE"] == brand]["MODEL"].unique()))
-    year_val = c3.selectbox("Year", sorted(vehicle_df[(vehicle_df["MAKE"] == brand) & (vehicle_df["MODEL"] == model_name)]["YEAR"].unique(), reverse=True))
-    
-    selected_car = vehicle_df[(vehicle_df["MAKE"] == brand) & (vehicle_df["MODEL"] == model_name) & (vehicle_df["YEAR"] == year_val)].iloc[0]
+    brand_options = (
+        vehicle_df[["MAKE_KEY", "MAKE_DISPLAY"]]
+        .drop_duplicates()
+        .sort_values("MAKE_DISPLAY")
+    )
+    brand_keys = brand_options["MAKE_KEY"].tolist()
+    default_brand = "PERODUA" if "PERODUA" in brand_keys else brand_keys[0]
+    brand = c1.selectbox(
+        "Brand",
+        brand_keys,
+        index=brand_keys.index(default_brand),
+        format_func=lambda make_key: brand_options.loc[
+            brand_options["MAKE_KEY"] == make_key, "MAKE_DISPLAY"
+        ].iloc[0]
+    )
+    brand_models = (
+        vehicle_df.loc[vehicle_df["MAKE_KEY"] == brand, ["MODEL_KEY", "MODEL_DISPLAY"]]
+        .drop_duplicates()
+        .sort_values("MODEL_DISPLAY")
+    )
+    model_keys = brand_models["MODEL_KEY"].tolist()
+    model_name = c2.selectbox(
+        "Model",
+        model_keys,
+        format_func=lambda model_key: brand_models.loc[
+            brand_models["MODEL_KEY"] == model_key, "MODEL_DISPLAY"
+        ].iloc[0]
+    )
+    matching_rows = vehicle_df[
+        (vehicle_df["MAKE_KEY"] == brand) & (vehicle_df["MODEL_KEY"] == model_name)
+    ]
+    year_val = c3.selectbox("Year", sorted(matching_rows["YEAR"].unique(), reverse=True))
+
+    selected_car = matching_rows[matching_rows["YEAR"] == year_val].iloc[0]
 
 # Tabs
 calc_tab, hist_tab = st.tabs(["🚀 Predictor", "📜 Trip History"])
