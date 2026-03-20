@@ -28,9 +28,9 @@ gmaps = googlemaps.Client(key=GOOGLE_API_KEY)
 
 BASE_DIR = Path(__file__).resolve().parent
 CSV_PATH = BASE_DIR / "fuelconsumption3.csv"
-MODEL_PATH = BASE_DIR / "fuel_model2.pkl"
-FUEL_ENCODER_PATH = BASE_DIR / "fuel_encoder2.pkl"
-CLASS_ENCODER_PATH = BASE_DIR / "class_encoder2.pkl"
+MODEL_PATH = BASE_DIR / "fuel_model.pkl"
+FUEL_ENCODER_PATH = BASE_DIR / "fuel_encoder.pkl"
+CLASS_ENCODER_PATH = BASE_DIR / "class_encoder.pkl"
 
 
 def inject_styles():
