@@ -617,6 +617,10 @@ def nudge_fuel_price(delta):
     st.session_state.fuel_price_input = value
 
 
+def sync_departure_time():
+    st.session_state.departure_time = st.session_state.departure_time_widget
+
+
 def get_route_info(start, end, dep_time: datetime):
     try:
         directions = gmaps.directions(
@@ -764,7 +768,9 @@ model, le_fuel, le_class = load_ai_model()
 if "history" not in st.session_state:
     st.session_state.history = []
 if "departure_time" not in st.session_state:
-    st.session_state.departure_time = datetime.now().time()
+    st.session_state.departure_time = datetime.now().replace(second=0, microsecond=0).time()
+if "departure_time_widget" not in st.session_state:
+    st.session_state.departure_time_widget = st.session_state.departure_time
 if "latest_nav_url" not in st.session_state:
     st.session_state.latest_nav_url = None
 if "fuel_price" not in st.session_state:
@@ -896,11 +902,12 @@ with calc_tab:
             style_overrides=SEARCHBOX_STYLE,
         )
 
-    chosen_time = st.time_input(
+    st.time_input(
         "Departure Time",
-        value=st.session_state.departure_time,
+        key="departure_time_widget",
+        on_change=sync_departure_time,
     )
-    st.session_state.departure_time = chosen_time
+    chosen_time = st.session_state.departure_time_widget
 
     st.markdown(
         """
