@@ -818,52 +818,58 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-vehicle_col1, vehicle_col2, vehicle_col3 = st.columns(3)
-with vehicle_col1:
-    st.markdown('<div class="field-label">Brand</div>', unsafe_allow_html=True)
-    brand_display = st_searchbox(
-        search_brands,
-        key="brand_search",
-        placeholder="Search brand",
-        style_overrides=SEARCHBOX_STYLE,
+st.markdown('<div class="field-label">Brand</div>', unsafe_allow_html=True)
+brand_display = st_searchbox(
+    search_brands,
+    key="brand_search",
+    placeholder="Search brand",
+    style_overrides=SEARCHBOX_STYLE,
+)
+brand = None
+if brand_display:
+    brand_match = brand_options.loc[
+        brand_options["MAKE_DISPLAY"].str.casefold() == brand_display.casefold(),
+        "MAKE_KEY",
+    ]
+    if not brand_match.empty:
+        brand = brand_match.iloc[0]
+
+if brand:
+    brand_models = (
+        vehicle_df.loc[vehicle_df["MAKE_KEY"] == brand, ["MODEL_KEY", "MODEL_DISPLAY"]]
+        .drop_duplicates()
+        .sort_values("MODEL_DISPLAY")
     )
-    brand = None
-    if brand_display:
-        brand_match = brand_options.loc[
-            brand_options["MAKE_DISPLAY"].str.casefold() == brand_display.casefold(),
-            "MAKE_KEY",
-        ]
-        if not brand_match.empty:
-            brand = brand_match.iloc[0]
-with vehicle_col2:
-    if brand:
-        brand_models = (
-            vehicle_df.loc[vehicle_df["MAKE_KEY"] == brand, ["MODEL_KEY", "MODEL_DISPLAY"]]
-            .drop_duplicates()
-            .sort_values("MODEL_DISPLAY")
-        )
-        model_keys = brand_models["MODEL_KEY"].tolist()
-        model_name = st.selectbox(
-            "Model",
-            model_keys,
-            format_func=lambda key: brand_models.loc[
-                brand_models["MODEL_KEY"] == key, "MODEL_DISPLAY"
-            ].iloc[0],
-        )
-    else:
-        st.selectbox("Model", ["Select a brand first"], index=0, disabled=True)
-        brand_models = pd.DataFrame(columns=["MODEL_KEY", "MODEL_DISPLAY"])
-        model_name = None
-with vehicle_col3:
-    if brand and model_name:
-        matching_rows = vehicle_df[
-            (vehicle_df["MAKE_KEY"] == brand) & (vehicle_df["MODEL_KEY"] == model_name)
-        ]
-        year_val = st.selectbox("Year", sorted(matching_rows["YEAR"].unique(), reverse=True))
-    else:
-        st.selectbox("Year", ["Select a model first"], index=0, disabled=True)
-        matching_rows = pd.DataFrame()
-        year_val = None
+    model_keys = brand_models["MODEL_KEY"].tolist()
+    if st.session_state.get("model_select") not in model_keys:
+        st.session_state.model_select = model_keys[0]
+    model_name = st.selectbox(
+        "Model",
+        model_keys,
+        key="model_select",
+        format_func=lambda key: brand_models.loc[
+            brand_models["MODEL_KEY"] == key, "MODEL_DISPLAY"
+        ].iloc[0],
+    )
+else:
+    st.session_state.pop("model_select", None)
+    st.selectbox("Model", ["Select a brand first"], index=0, disabled=True, key="model_select_disabled")
+    brand_models = pd.DataFrame(columns=["MODEL_KEY", "MODEL_DISPLAY"])
+    model_name = None
+
+if brand and model_name:
+    matching_rows = vehicle_df[
+        (vehicle_df["MAKE_KEY"] == brand) & (vehicle_df["MODEL_KEY"] == model_name)
+    ]
+    year_options = sorted(matching_rows["YEAR"].unique(), reverse=True)
+    if st.session_state.get("year_select") not in year_options:
+        st.session_state.year_select = year_options[0]
+    year_val = st.selectbox("Year", year_options, key="year_select")
+else:
+    st.session_state.pop("year_select", None)
+    st.selectbox("Year", ["Select a model first"], index=0, disabled=True, key="year_select_disabled")
+    matching_rows = pd.DataFrame()
+    year_val = None
 
 selected_car = None if matching_rows.empty or year_val is None else matching_rows[matching_rows["YEAR"] == year_val].iloc[0]
 
@@ -884,23 +890,20 @@ with calc_tab:
         unsafe_allow_html=True,
     )
 
-    location_col1, location_col2 = st.columns(2)
-    with location_col1:
-        st.markdown('<div class="mini-badge" style="margin-bottom:0.6rem;">Starting point</div>', unsafe_allow_html=True)
-        start_addr = st_searchbox(
-            search_places,
-            key="start_search",
-            placeholder="Search starting location",
-            style_overrides=SEARCHBOX_STYLE,
-        )
-    with location_col2:
-        st.markdown('<div class="mini-badge" style="margin-bottom:0.6rem;">Destination</div>', unsafe_allow_html=True)
-        end_addr = st_searchbox(
-            search_places,
-            key="end_search",
-            placeholder="Search destination",
-            style_overrides=SEARCHBOX_STYLE,
-        )
+    st.markdown('<div class="mini-badge" style="margin-bottom:0.6rem;">Starting point</div>', unsafe_allow_html=True)
+    start_addr = st_searchbox(
+        search_places,
+        key="start_search",
+        placeholder="Search starting location",
+        style_overrides=SEARCHBOX_STYLE,
+    )
+    st.markdown('<div class="mini-badge" style="margin-bottom:0.6rem;">Destination</div>', unsafe_allow_html=True)
+    end_addr = st_searchbox(
+        search_places,
+        key="end_search",
+        placeholder="Search destination",
+        style_overrides=SEARCHBOX_STYLE,
+    )
 
     st.time_input(
         "Departure Time",
