@@ -215,8 +215,78 @@ def inject_styles():
             letter-spacing: 0.01em;
         }
 
+        .wheel-shell {
+            position: relative;
+            margin-top: 0.75rem;
+            margin-bottom: 1rem;
+            padding: 1rem;
+            border-radius: 26px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            background:
+                radial-gradient(circle at top, rgba(255, 255, 255, 0.08), transparent 42%),
+                linear-gradient(180deg, rgba(15, 23, 42, 0.92), rgba(15, 23, 42, 0.76));
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 18px 36px rgba(2, 6, 23, 0.22);
+            overflow: hidden;
+        }
+
+        .wheel-shell::before,
+        .wheel-shell::after {
+            content: "";
+            position: absolute;
+            left: 1rem;
+            right: 1rem;
+            height: 34%;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .wheel-shell::before {
+            top: 0;
+            background: linear-gradient(180deg, rgba(2, 6, 23, 0.78), rgba(2, 6, 23, 0));
+        }
+
+        .wheel-shell::after {
+            bottom: 0;
+            background: linear-gradient(0deg, rgba(2, 6, 23, 0.78), rgba(2, 6, 23, 0));
+        }
+
+        .wheel-highlight {
+            position: absolute;
+            left: 1rem;
+            right: 1rem;
+            top: 50%;
+            height: 3.4rem;
+            transform: translateY(-50%);
+            border-top: 1px solid rgba(251, 146, 60, 0.22);
+            border-bottom: 1px solid rgba(251, 146, 60, 0.22);
+            background: rgba(251, 146, 60, 0.08);
+            border-radius: 18px;
+            z-index: 0;
+            pointer-events: none;
+            box-shadow: 0 0 18px rgba(249, 115, 22, 0.08);
+        }
+
+        .wheel-title {
+            position: relative;
+            z-index: 1;
+            margin-bottom: 0.9rem;
+            color: #e2e8f0;
+            font-size: 1rem;
+            font-weight: 700;
+        }
+
+        .wheel-colon {
+            position: relative;
+            z-index: 1;
+            margin-top: 2.4rem;
+            text-align: center;
+            color: #fdba74;
+            font-size: 2rem;
+            font-weight: 800;
+            letter-spacing: 0.04em;
+        }
+
         div[data-testid="stSelectbox"] > div[data-baseweb="select"] > div,
-        div[data-testid="stTimeInput"] input,
         div[data-testid="stNumberInput"] input,
         .stSearchbox > div,
         .stSearchbox [data-baseweb="base-input"],
@@ -238,7 +308,6 @@ def inject_styles():
         }
 
         div[data-testid="stSelectbox"] > div[data-baseweb="select"] > div:hover,
-        div[data-testid="stTimeInput"] input:hover,
         div[data-testid="stNumberInput"] input:hover,
         .stSearchbox > div:hover,
         .stSearchbox [data-baseweb="base-input"]:hover,
@@ -247,7 +316,6 @@ def inject_styles():
         }
 
         div[data-testid="stSelectbox"] > div[data-baseweb="select"] > div:focus-within,
-        div[data-testid="stTimeInput"] input:focus,
         div[data-testid="stNumberInput"] input:focus,
         .stSearchbox > div:focus-within,
         .stSearchbox [data-baseweb="base-input"]:focus-within,
@@ -260,8 +328,7 @@ def inject_styles():
             width: 100%;
         }
 
-        .stSearchbox input::placeholder,
-        div[data-testid="stTimeInput"] input::placeholder {
+        .stSearchbox input::placeholder {
             color: #64748b !important;
         }
 
@@ -618,7 +685,12 @@ def nudge_fuel_price(delta):
 
 
 def sync_departure_time():
-    st.session_state.departure_time = st.session_state.departure_time_widget
+    st.session_state.departure_time = datetime.now().replace(
+        hour=int(st.session_state.departure_hour),
+        minute=int(st.session_state.departure_minute),
+        second=0,
+        microsecond=0,
+    ).time()
 
 
 def get_route_info(start, end, dep_time: datetime):
@@ -769,8 +841,10 @@ if "history" not in st.session_state:
     st.session_state.history = []
 if "departure_time" not in st.session_state:
     st.session_state.departure_time = datetime.now().replace(second=0, microsecond=0).time()
-if "departure_time_widget" not in st.session_state:
-    st.session_state.departure_time_widget = st.session_state.departure_time
+if "departure_hour" not in st.session_state:
+    st.session_state.departure_hour = f"{st.session_state.departure_time.hour:02d}"
+if "departure_minute" not in st.session_state:
+    st.session_state.departure_minute = f"{st.session_state.departure_time.minute:02d}"
 if "latest_nav_url" not in st.session_state:
     st.session_state.latest_nav_url = None
 if "fuel_price" not in st.session_state:
