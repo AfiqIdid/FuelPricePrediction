@@ -156,6 +156,38 @@ def inject_styles():
             font-size: 0.9rem;
         }
 
+        .fuel-header-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 0.85rem;
+            margin-top: 1rem;
+            align-items: stretch;
+        }
+
+        .fuel-header-card {
+            padding: 0.95rem 1rem;
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: rgba(15, 23, 42, 0.62);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+            min-height: 88px;
+        }
+
+        .fuel-header-label {
+            color: #94a3b8;
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            font-weight: 700;
+        }
+
+        .fuel-header-value {
+            margin-top: 0.35rem;
+            color: #f8fafc;
+            font-size: 1.25rem;
+            font-weight: 800;
+        }
+
         .section-card {
             margin-bottom: 1.25rem;
             padding: 1.35rem;
@@ -196,6 +228,66 @@ def inject_styles():
             color: #cbd5e1;
             font-size: 0.78rem;
             font-weight: 600;
+        }
+
+        div[data-testid="stRadio"] > label {
+            color: #f8fafc !important;
+            font-weight: 700 !important;
+        }
+
+        div[data-testid="stRadio"] [role="radiogroup"] {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 0.9rem;
+            margin-top: 0.4rem;
+        }
+
+        div[data-testid="stRadio"] [role="radiogroup"] label {
+            min-height: 92px;
+            padding: 1rem 1.1rem;
+            border-radius: 22px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+            box-shadow: 0 10px 22px rgba(2, 6, 23, 0.18);
+        }
+
+        div[data-testid="stRadio"] [role="radiogroup"] label > div:first-child {
+            display: none !important;
+        }
+
+        div[data-testid="stRadio"] [role="radiogroup"] label p {
+            color: inherit !important;
+            font-weight: 800 !important;
+            line-height: 1.3 !important;
+        }
+
+        div[data-testid="stRadio"] [role="radiogroup"] label:nth-of-type(1) {
+            background: linear-gradient(135deg, #facc15, #f59e0b);
+            color: #111827 !important;
+        }
+
+        div[data-testid="stRadio"] [role="radiogroup"] label:nth-of-type(2) {
+            background: linear-gradient(135deg, #22c55e, #16a34a);
+            color: #f8fafc !important;
+        }
+
+        div[data-testid="stRadio"] [role="radiogroup"] label:nth-of-type(3) {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            color: #fef2f2 !important;
+        }
+
+        div[data-testid="stRadio"] [role="radiogroup"] label:nth-of-type(4) {
+            background: linear-gradient(135deg, #111827, #000000);
+            color: #f8fafc !important;
+        }
+
+        div[data-testid="stRadio"] [role="radiogroup"] label:has(input:checked) {
+            transform: scale(1.04);
+            border-color: rgba(255, 255, 255, 0.75);
+            box-shadow: 0 18px 32px rgba(2, 6, 23, 0.28);
         }
 
         div[data-testid="stSelectbox"] label,
@@ -592,6 +684,16 @@ def inject_styles():
                 align-items: flex-start;
                 flex-direction: column;
             }
+
+            .fuel-header-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+
+        @media (max-width: 560px) {
+            .fuel-header-grid {
+                grid-template-columns: 1fr;
+            }
         }
         </style>
         """,
@@ -662,11 +764,51 @@ def search_brands(searchterm: str):
     return matches[:12]
 
 
+@st.cache_data(ttl=86400)
+def get_live_fuel_prices():
+    try:
+        url = "https://api.data.gov.my/data-catalogue?id=fuelprice&limit=1"
+        response = pd.read_json(url)
+        latest = response.iloc[0]
+        return {
+            "RON 95": 1.99,
+            "RON 97": float(latest["ron97"]),
+            "RON 100": 6.20,
+            "Diesel": float(latest["diesel_white_peninsula"]),
+        }
+    except Exception:
+        return {
+            "RON 95": 1.99,
+            "RON 97": 4.55,
+            "RON 100": 6.20,
+            "Diesel": 4.72,
+        }
+
+
 SEARCHBOX_STYLE = {
     "searchbox": {
         "optionEmpty": "hidden",
     }
 }
+
+FUEL_OPTION_META = {
+    "RON 95": {"icon": "🟡", "price_key": "RON 95"},
+    "RON 97": {"icon": "🟢", "price_key": "RON 97"},
+    "RON 100": {"icon": "🔴", "price_key": "RON 100"},
+    "Diesel": {"icon": "⚫", "price_key": "Diesel"},
+}
+
+
+def get_selected_fuel_price():
+    selected_fuel = st.session_state.fuel_type_option
+    return round(LIVE_PRICES[FUEL_OPTION_META[selected_fuel]["price_key"]], 2)
+
+
+def apply_selected_fuel_price():
+    value = get_selected_fuel_price()
+    st.session_state.fuel_price = value
+    st.session_state.fuel_price_slider = value
+    st.session_state.fuel_price_input = value
 
 
 def sync_fuel_price_from_slider():
@@ -874,6 +1016,7 @@ def render_result_panels(route, selected_car, year_val, fuel_price, model, le_fu
 
 
 inject_styles()
+LIVE_PRICES = get_live_fuel_prices()
 vehicle_df = load_csv_data(CSV_PATH.stat().st_mtime_ns if CSV_PATH.exists() else 0)
 model, le_fuel, le_class = load_ai_model()
 
@@ -887,15 +1030,35 @@ if "departure_minute" not in st.session_state:
     st.session_state.departure_minute = f"{st.session_state.departure_time.minute:02d}"
 if "latest_nav_url" not in st.session_state:
     st.session_state.latest_nav_url = None
+if "fuel_type_option" not in st.session_state:
+    st.session_state.fuel_type_option = "RON 95"
 if "fuel_price" not in st.session_state:
-    st.session_state.fuel_price = 1.99
+    st.session_state.fuel_price = round(LIVE_PRICES["RON 95"], 2)
 if "fuel_price_slider" not in st.session_state:
     st.session_state.fuel_price_slider = st.session_state.fuel_price
 if "fuel_price_input" not in st.session_state:
     st.session_state.fuel_price_input = st.session_state.fuel_price
 
+# --- CLEAN HEADER START ---
+# Build cards individually to avoid join errors
+cards_html = ""
+color_map = {
+    "RON 95": "#facc15",  # Yellow
+    "RON 97": "#4ade80",  # Green
+    "RON 100": "#fb7185", # Red/Pink
+    "Diesel": "#94a3b8"   # Grey/Silver
+}
+for label, price in LIVE_PRICES.items():
+    text_color = color_map.get(label, "#ffffff")
+    cards_html += f"""
+    <div class="fuel-header-card">
+        <div class="fuel-header-label" style="color: {text_color};">{label}</div>
+        <div class="fuel-header-value">RM {price:.2f}</div>
+    </div>"""
+
+# One single markdown call with perfectly matched tags
 st.markdown(
-    """
+    f"""
     <div class="hero-shell">
         <div class="hero-kicker">Route intelligence</div>
         <h1 class="hero-title">Fuel Trip <span>Cost Predictor</span></h1>
@@ -903,10 +1066,14 @@ st.markdown(
             Plan a drive, check traffic-aware fuel cost, and compare the impact of vehicle choice,
             time of departure, and current pump price in one place.
         </p>
+        <div class="fuel-header-grid">
+            {cards_html}
+        </div>
     </div>
     """,
     unsafe_allow_html=True,
 )
+# --- CLEAN HEADER END ---
 
 if vehicle_df.empty:
     st.error(f"No vehicle data could be loaded from {CSV_PATH.name}.")
@@ -1032,19 +1199,25 @@ with calc_tab:
             <div class="section-header">
                 <div>
                     <p class="section-title">3. Fuel Settings</p>
-                    <p class="section-subtitle">Adjust the fuel price with slider, manual input, or quick step buttons.</p>
                 </div>
-                <div class="mini-badge">RM 1.00 to RM 10.00</div>
             </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    fuel_controls_col1, fuel_controls_col2, fuel_controls_col3 = st.columns([1, 1.4, 1])
-    with fuel_controls_col1:
-        minus_col, plus_col = st.columns(2)
+    st.markdown('<div class="field-label">Fuel Type</div>', unsafe_allow_html=True)
+    st.radio(
+        "Fuel Type",
+        options=list(FUEL_OPTION_META.keys()),
+        key="fuel_type_option",
+        horizontal=False,
+        on_change=apply_selected_fuel_price,
+        label_visibility="collapsed",
+    )
 
+    fuel_controls_col1, fuel_controls_col2, fuel_controls_col3 = st.columns([1, 1.4, 1])
+ 
     with fuel_controls_col2:
         st.number_input(
             "Fuel Price (RM/L)",
@@ -1057,18 +1230,14 @@ with calc_tab:
     with fuel_controls_col3:
         st.markdown(
             f"""
+            <div class="section-card" style="margin-top:1.9rem; margin-bottom:0;">
+                <div class="section-title">Selected Fuel</div>
+                <div class="section-subtitle">{FUEL_OPTION_META[st.session_state.fuel_type_option]["icon"]} {st.session_state.fuel_type_option}: RM {st.session_state.fuel_price:.2f}</div>
+            </div>
             """,
             unsafe_allow_html=True,
         )
 
-    st.slider(
-        "Adjust Fuel Price",
-        min_value=1.00,
-        max_value=10.00,
-        step=0.01,
-        key="fuel_price_slider",
-        on_change=sync_fuel_price_from_slider,
-    )
     fuel_price = st.session_state.fuel_price
 
     run_calc = st.button("Calculate Trip Cost")
