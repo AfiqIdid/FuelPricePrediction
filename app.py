@@ -335,16 +335,23 @@ def inject_styles():
         div[data-testid="stSlider"] > div[data-baseweb="slider"] {
             padding-top: 0.9rem;
             padding-bottom: 0.6rem;
+            pointer-events: none;
         }
 
         div[data-testid="stSlider"] [role="slider"] {
             background: linear-gradient(135deg, #f97316, #fb923c) !important;
             border: 0 !important;
             box-shadow: 0 2px 10px rgba(249, 115, 22, 0.35) !important;
+            pointer-events: auto !important;
         }
 
         div[data-testid="stSlider"] [data-testid="stTickBar"] {
             background: rgba(255, 255, 255, 0.16) !important;
+            pointer-events: none !important;
+        }
+
+        div[data-testid="stSlider"] [data-baseweb="slider"] > div:not([role="slider"]) {
+            pointer-events: none !important;
         }
 
         div.stButton > button {
@@ -733,6 +740,22 @@ def get_traffic_level(traffic_ratio):
     return "Light", "var(--good)"
 
 
+def calculate_average_speed(dist_km, traffic_min):
+    if traffic_min <= 0:
+        return 0.0
+    return dist_km / (traffic_min / 60)
+
+
+def get_environment_profile(average_speed):
+    if average_speed < 25:
+        return 1.35, "Residential/School Zone - High stop-start", "var(--bad)"
+    if average_speed < 55:
+        return 1.15, "Mixed City Road", "var(--warn)"
+    if average_speed <= 85:
+        return 1.00, "Standard Flow", "var(--good)"
+    return 0.90, "Highway Cruising - High Efficiency", "#93c5fd"
+
+
 def render_result_panels(route, selected_car, year_val, fuel_price, model, le_fuel, le_class):
     actual_l_100km = float(selected_car["COMB (L/100 km)"])
     ai_l_100km = None
@@ -760,14 +783,13 @@ def render_result_panels(route, selected_car, year_val, fuel_price, model, le_fu
     if l_100km_pred is None or l_100km_pred <= 0:
         l_100km_pred = actual_l_100km
 
+    average_speed = calculate_average_speed(route["dist_km"], route["traffic_min"])
+    env_multiplier, environment_label, environment_color = get_environment_profile(average_speed)
     base_liters = (route["dist_km"] / 100) * l_100km_pred
-    traffic_ratio = route["traffic_min"] / max(route["duration_min"], 1)
-    penalty = 1 + ((traffic_ratio - 1) * 0.5)
-    final_liters = base_liters * penalty
+    final_liters = (route["dist_km"] / 100) * l_100km_pred * env_multiplier
     final_cost = final_liters * fuel_price
     base_cost = base_liters * fuel_price
-    traffic_extra = final_cost - (base_liters * fuel_price)
-    traffic_level, traffic_color = get_traffic_level(traffic_ratio)
+    environment_extra = final_cost - base_cost
     efficiency_score = max(15, min(92, int(115 - (l_100km_pred * 7))))
     prediction_note = (
         f"Actual car data: {actual_l_100km:.1f} L/100 km"
@@ -789,12 +811,30 @@ def render_result_panels(route, selected_car, year_val, fuel_price, model, le_fu
                 </div>
                 <div class="summary-pill">
                     <span class="summary-label">Traffic</span>
-                    <strong style="color:{traffic_color};">{traffic_level}</strong>
+                    <strong style="color:{environment_color};">{environment_label}</strong>
                 </div>
             </div>
         </div>
     """
     st.markdown(summary_html, unsafe_allow_html=True)
+
+    environment_html = f"""
+        <div class="summary-card" style="margin-top:1rem;">
+            <div class="summary-label">Detected Environment</div>
+            <p class="summary-route" style="margin-bottom:0.7rem; color:{environment_color};">{environment_label}</p>
+            <div class="summary-grid">
+                <div class="summary-pill">
+                    <span class="summary-label">Average Speed</span>
+                    <strong>{average_speed:.1f} km/h</strong>
+                </div>
+                <div class="summary-pill">
+                    <span class="summary-label">Smart Multiplier</span>
+                    <strong>{env_multiplier:.2f}x</strong>
+                </div>
+            </div>
+        </div>
+    """
+    st.markdown(environment_html, unsafe_allow_html=True)
 
     metrics_html = f"""
         <div class="metrics-row">
@@ -811,7 +851,7 @@ def render_result_panels(route, selected_car, year_val, fuel_price, model, le_fu
             <div class="metric-card">
                 <div class="metric-eyebrow">Fuel Needed</div>
                 <div class="metric-number">{final_liters:.1f}</div>
-                <div class="metric-note">Liters after traffic penalty</div>
+                <div class="metric-note">Liters after smart environment multiplier</div>
             </div>
         </div>
     """
@@ -823,7 +863,7 @@ def render_result_panels(route, selected_car, year_val, fuel_price, model, le_fu
             <div class="cost-value">RM {final_cost:.2f}</div>
             <div class="cost-copy">
                 Base fuel cost: RM {base_cost:.2f}<br/>
-                Traffic impact: RM {traffic_extra:.2f}<br/>
+                Environment impact: RM {environment_extra:.2f}<br/>
                 {prediction_note}
             </div>
         </div>
