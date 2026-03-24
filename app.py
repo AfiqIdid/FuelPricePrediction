@@ -756,12 +756,19 @@ def search_places(searchterm: str):
 
 
 def search_brands(searchterm: str):
-    if len(searchterm.strip()) < 2:
-        return []
     matches = brand_options[
         brand_options["MAKE_DISPLAY"].str.contains(searchterm, case=False, na=False)
     ]["MAKE_DISPLAY"].tolist()
-    return matches[:12]
+    return matches[:4]
+
+
+def search_option_labels(searchterm: str, options, limit=4):
+    if not searchterm.strip():
+        return options[:limit]
+    return [
+        option for option in options
+        if searchterm.lower() in str(option).lower()
+    ][:limit]
 
 
 @st.cache_data(ttl=86400)
@@ -788,6 +795,10 @@ def get_live_fuel_prices():
 SEARCHBOX_STYLE = {
     "searchbox": {
         "optionEmpty": "hidden",
+        "menuList": {
+            "maxHeight": "224px",
+            "overflowY": "auto",
+        },
     }
 }
 
@@ -809,6 +820,14 @@ def apply_selected_fuel_price():
     st.session_state.fuel_price = value
     st.session_state.fuel_price_slider = value
     st.session_state.fuel_price_input = value
+
+
+def sync_fuel_price_from_selected_type():
+    selected_price = get_selected_fuel_price()
+    if abs(st.session_state.fuel_price - selected_price) < 0.011:
+        st.session_state.fuel_price = selected_price
+        st.session_state.fuel_price_slider = selected_price
+        st.session_state.fuel_price_input = selected_price
 
 
 def sync_fuel_price_from_slider():
@@ -1004,6 +1023,7 @@ def render_result_panels(route, selected_car, year_val, fuel_price, model, le_fu
             <div class="cost-title">Estimated Trip Cost</div>
             <div class="cost-value">RM {final_cost:.2f}</div>
             <div class="cost-copy">
+                Fuel price used: RM {fuel_price:.2f}/L<br/>
                 Base fuel cost: RM {base_cost:.2f}<br/>
                 Environment impact: RM {environment_extra:.2f}<br/>
                 {prediction_note}
@@ -1039,6 +1059,8 @@ if "fuel_price_slider" not in st.session_state:
 if "fuel_price_input" not in st.session_state:
     st.session_state.fuel_price_input = st.session_state.fuel_price
 
+sync_fuel_price_from_selected_type()
+
 # --- CLEAN HEADER START ---
 # Build cards individually to avoid join errors
 cards_html = ""
@@ -1060,7 +1082,6 @@ for label, price in LIVE_PRICES.items():
 st.markdown(
     f"""
     <div class="hero-shell">
-        <div class="hero-kicker">Route intelligence</div>
         <h1 class="hero-title">Fuel Trip <span>Cost Predictor</span></h1>
         <p class="hero-copy">
             Plan a drive, check traffic-aware fuel cost, and compare the impact of vehicle choice,
@@ -1105,6 +1126,8 @@ brand_display = st_searchbox(
     key="brand_search",
     placeholder="Search brand",
     style_overrides=SEARCHBOX_STYLE,
+    default_options=brand_options["MAKE_DISPLAY"].tolist()[:4],
+    style_absolute=False,
 )
 brand = None
 if brand_display:
@@ -1121,20 +1144,28 @@ if brand:
         .drop_duplicates()
         .sort_values("MODEL_DISPLAY")
     )
-    model_keys = brand_models["MODEL_KEY"].tolist()
-    if st.session_state.get("model_select") not in model_keys:
-        st.session_state.model_select = model_keys[0]
-    model_name = st.selectbox(
-        "Model",
-        model_keys,
-        key="model_select",
-        format_func=lambda key: brand_models.loc[
-            brand_models["MODEL_KEY"] == key, "MODEL_DISPLAY"
-        ].iloc[0],
+    model_display = st_searchbox(
+        lambda term: search_option_labels(
+            term,
+            brand_models["MODEL_DISPLAY"].tolist(),
+        ),
+        key="model_search",
+        placeholder="Search model",
+        style_overrides=SEARCHBOX_STYLE,
+        default_options=brand_models["MODEL_DISPLAY"].tolist()[:4],
+        style_absolute=False,
     )
+    model_name = None
+    if model_display:
+        model_match = brand_models.loc[
+            brand_models["MODEL_DISPLAY"].str.casefold() == model_display.casefold(),
+            "MODEL_KEY",
+        ]
+        if not model_match.empty:
+            model_name = model_match.iloc[0]
 else:
-    st.session_state.pop("model_select", None)
-    st.selectbox("Model", ["Select a brand first"], index=0, disabled=True, key="model_select_disabled")
+    st.session_state.pop("model_search", None)
+    st.text_input("Model", value="Select a brand first", disabled=True)
     brand_models = pd.DataFrame(columns=["MODEL_KEY", "MODEL_DISPLAY"])
     model_name = None
 
@@ -1143,12 +1174,18 @@ if brand and model_name:
         (vehicle_df["MAKE_KEY"] == brand) & (vehicle_df["MODEL_KEY"] == model_name)
     ]
     year_options = sorted(matching_rows["YEAR"].unique(), reverse=True)
-    if st.session_state.get("year_select") not in year_options:
-        st.session_state.year_select = year_options[0]
-    year_val = st.selectbox("Year", year_options, key="year_select")
+    year_display = st_searchbox(
+        lambda term: search_option_labels(term, [str(year) for year in year_options]),
+        key="year_search",
+        placeholder="Search year",
+        style_overrides=SEARCHBOX_STYLE,
+        default_options=[str(year) for year in year_options[:4]],
+        style_absolute=False,
+    )
+    year_val = int(year_display) if year_display else None
 else:
-    st.session_state.pop("year_select", None)
-    st.selectbox("Year", ["Select a model first"], index=0, disabled=True, key="year_select_disabled")
+    st.session_state.pop("year_search", None)
+    st.text_input("Year", value="Select a model first", disabled=True)
     matching_rows = pd.DataFrame()
     year_val = None
 
