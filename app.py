@@ -820,11 +820,12 @@ def apply_selected_fuel_price():
     st.session_state.fuel_price = value
     st.session_state.fuel_price_slider = value
     st.session_state.fuel_price_input = value
+    st.session_state.fuel_price_manual_override = False
 
 
 def sync_fuel_price_from_selected_type():
     selected_price = get_selected_fuel_price()
-    if abs(st.session_state.fuel_price - selected_price) < 0.011:
+    if not st.session_state.get("fuel_price_manual_override", False):
         st.session_state.fuel_price = selected_price
         st.session_state.fuel_price_slider = selected_price
         st.session_state.fuel_price_input = selected_price
@@ -834,6 +835,7 @@ def sync_fuel_price_from_slider():
     value = round(float(st.session_state.fuel_price_slider), 2)
     st.session_state.fuel_price = value
     st.session_state.fuel_price_input = value
+    st.session_state.fuel_price_manual_override = True
 
 
 def sync_fuel_price_from_input():
@@ -842,6 +844,7 @@ def sync_fuel_price_from_input():
     st.session_state.fuel_price = value
     st.session_state.fuel_price_slider = value
     st.session_state.fuel_price_input = value
+    st.session_state.fuel_price_manual_override = True
 
 
 def nudge_fuel_price(delta):
@@ -850,6 +853,7 @@ def nudge_fuel_price(delta):
     st.session_state.fuel_price = value
     st.session_state.fuel_price_slider = value
     st.session_state.fuel_price_input = value
+    st.session_state.fuel_price_manual_override = True
 
 
 def sync_departure_time():
@@ -869,25 +873,11 @@ def get_route_info(start, end, dep_time: datetime):
             mode="driving",
             departure_time=dep_time,
             traffic_model="best_guess",
+            alternatives=True,
         )
         if not directions:
             return None
-        leg = directions[0]["legs"][0]
-        dur_norm = leg["duration"]["value"] / 60
-        dur_traffic = leg.get("duration_in_traffic", leg["duration"])["value"] / 60
-        return {
-            "dist_km": leg["distance"]["value"] / 1000,
-            "duration_min": dur_norm,
-            "traffic_min": dur_traffic,
-            "path": [
-                {"lat": p["lat"], "lon": p["lng"]}
-                for p in googlemaps.convert.decode_polyline(
-                    directions[0]["overview_polyline"]["points"]
-                )
-            ],
-            "start_addr": leg["start_address"],
-            "end_addr": leg["end_address"],
-        }
+        return directions
     except Exception as exc:
         st.error(f"Maps Error: {exc}")
         return None
@@ -917,7 +907,7 @@ def get_environment_profile(average_speed):
     return 0.90, "Highway Cruising - High Efficiency", "#93c5fd"
 
 
-def render_result_panels(route, selected_car, year_val, fuel_price, model, le_fuel, le_class):
+def get_consumption_rate(selected_car, year_val, model, le_fuel, le_class):
     actual_l_100km = float(selected_car["COMB (L/100 km)"])
     ai_l_100km = None
 
@@ -938,25 +928,59 @@ def render_result_panels(route, selected_car, year_val, fuel_price, model, le_fu
     except Exception:
         ai_l_100km = None
 
-    # Use the selected vehicle's actual combined consumption first.
-    # The AI model is kept as a fallback/reference instead of overriding known car data.
-    l_100km_pred = actual_l_100km if actual_l_100km > 0 else ai_l_100km
-    if l_100km_pred is None or l_100km_pred <= 0:
-        l_100km_pred = actual_l_100km
+    consumption_rate = actual_l_100km if actual_l_100km > 0 else ai_l_100km
+    if consumption_rate is None or consumption_rate <= 0:
+        consumption_rate = actual_l_100km
 
-    average_speed = calculate_average_speed(route["dist_km"], route["traffic_min"])
-    env_multiplier, environment_label, environment_color = get_environment_profile(average_speed)
-    base_liters = (route["dist_km"] / 100) * l_100km_pred
-    final_liters = (route["dist_km"] / 100) * l_100km_pred * env_multiplier
-    final_cost = final_liters * fuel_price
-    base_cost = base_liters * fuel_price
-    environment_extra = final_cost - base_cost
-    efficiency_score = max(15, min(92, int(115 - (l_100km_pred * 7))))
     prediction_note = (
         f"Actual car data: {actual_l_100km:.1f} L/100 km"
         if ai_l_100km is None
         else f"Actual car data: {actual_l_100km:.1f} L/100 km | AI reference: {ai_l_100km:.1f} L/100 km"
     )
+    return consumption_rate, prediction_note
+
+
+def build_route_result(route_option, route_index, consumption_rate, fuel_price):
+    leg = route_option["legs"][0]
+    distance_km = leg["distance"]["value"] / 1000
+    duration_mins = leg.get("duration_in_traffic", leg["duration"])["value"] / 60
+    average_speed = calculate_average_speed(distance_km, duration_mins)
+    multiplier, environment_label, environment_color = get_environment_profile(average_speed)
+    final_liters = (distance_km / 100) * consumption_rate * multiplier
+    final_cost = final_liters * fuel_price
+    base_cost = (distance_km / 100) * consumption_rate * fuel_price
+    route_summary = route_option.get("summary") or f"Route {route_index}"
+
+    return {
+        "summary": route_summary,
+        "dist_km": distance_km,
+        "traffic_min": duration_mins,
+        "average_speed": average_speed,
+        "env_multiplier": multiplier,
+        "environment_label": environment_label,
+        "environment_color": environment_color,
+        "final_liters": final_liters,
+        "final_cost": final_cost,
+        "base_cost": base_cost,
+        "environment_extra": final_cost - base_cost,
+        "start_addr": leg["start_address"],
+        "end_addr": leg["end_address"],
+    }
+
+
+def render_result_panels(route, selected_car, year_val, fuel_price, model, le_fuel, le_class):
+    l_100km_pred, prediction_note = get_consumption_rate(
+        selected_car, year_val, model, le_fuel, le_class
+    )
+    route_result = build_route_result(route, 1, l_100km_pred, fuel_price)
+    average_speed = route_result["average_speed"]
+    env_multiplier = route_result["env_multiplier"]
+    environment_label = route_result["environment_label"]
+    environment_color = route_result["environment_color"]
+    final_liters = route_result["final_liters"]
+    final_cost = route_result["final_cost"]
+    base_cost = route_result["base_cost"]
+    environment_extra = route_result["environment_extra"]
 
     summary_html = f"""
         <div class="summary-card">
@@ -1001,12 +1025,12 @@ def render_result_panels(route, selected_car, year_val, fuel_price, model, le_fu
         <div class="metrics-row">
             <div class="metric-card">
                 <div class="metric-eyebrow">Distance</div>
-                <div class="metric-number">{route["dist_km"]:.1f}</div>
+                <div class="metric-number">{route_result["dist_km"]:.1f}</div>
                 <div class="metric-note">Kilometers on this route</div>
             </div>
             <div class="metric-card">
                 <div class="metric-eyebrow">Travel Time</div>
-                <div class="metric-number">{route["traffic_min"]:.0f}</div>
+                <div class="metric-number">{route_result["traffic_min"]:.0f}</div>
                 <div class="metric-note">Minutes with live traffic</div>
             </div>
             <div class="metric-card">
@@ -1024,6 +1048,7 @@ def render_result_panels(route, selected_car, year_val, fuel_price, model, le_fu
             <div class="cost-value">RM {final_cost:.2f}</div>
             <div class="cost-copy">
                 Fuel price used: RM {fuel_price:.2f}/L<br/>
+                Formula: ({route_result["dist_km"]:.1f} / 100) x {l_100km_pred:.1f} x {env_multiplier:.2f} x {fuel_price:.2f}<br/>
                 Base fuel cost: RM {base_cost:.2f}<br/>
                 Environment impact: RM {environment_extra:.2f}<br/>
                 {prediction_note}
@@ -1050,8 +1075,20 @@ if "departure_minute" not in st.session_state:
     st.session_state.departure_minute = f"{st.session_state.departure_time.minute:02d}"
 if "latest_nav_url" not in st.session_state:
     st.session_state.latest_nav_url = None
+if "pending_route_results" not in st.session_state:
+    st.session_state.pending_route_results = []
+if "pending_route_directions" not in st.session_state:
+    st.session_state.pending_route_directions = []
+if "selected_route_index" not in st.session_state:
+    st.session_state.selected_route_index = None
+if "selected_route_meta" not in st.session_state:
+    st.session_state.selected_route_meta = {}
+if "selected_route_history_saved" not in st.session_state:
+    st.session_state.selected_route_history_saved = False
 if "fuel_type_option" not in st.session_state:
     st.session_state.fuel_type_option = "RON 95"
+if "fuel_price_manual_override" not in st.session_state:
+    st.session_state.fuel_price_manual_override = False
 if "fuel_price" not in st.session_state:
     st.session_state.fuel_price = round(LIVE_PRICES["RON 95"], 2)
 if "fuel_price_slider" not in st.session_state:
@@ -1282,6 +1319,11 @@ with calc_tab:
     if run_calc:
         if selected_car is None:
             st.session_state.latest_nav_url = None
+            st.session_state.pending_route_results = []
+            st.session_state.pending_route_directions = []
+            st.session_state.selected_route_index = None
+            st.session_state.selected_route_meta = {}
+            st.session_state.selected_route_history_saved = False
             st.warning("Please search and select a brand, model, and year first.")
         elif start_addr and end_addr:
             now = datetime.now()
@@ -1290,37 +1332,157 @@ with calc_tab:
                 dep_datetime += timedelta(days=1)
 
             with st.spinner("Calculating route and fuel estimate..."):
-                route = get_route_info(start_addr, end_addr, dep_datetime)
+                directions = get_route_info(start_addr, end_addr, dep_datetime)
 
-            if route:
-                st.session_state.latest_nav_url = (
-                    f"https://www.google.com/maps/dir/?api=1"
-                    f"&origin={start_addr}&destination={end_addr}&travelmode=driving"
-                ).replace(" ", "+")
-                final_cost = render_result_panels(
-                    route,
-                    selected_car,
-                    year_val,
-                    fuel_price,
-                    model,
-                    le_fuel,
-                    le_class,
+            if directions:
+                consumption_rate, _ = get_consumption_rate(
+                    selected_car, year_val, model, le_fuel, le_class
                 )
-                st.session_state.history.append(
-                    {
-                        "Date": dep_datetime.strftime("%d/%m %H:%M"),
-                        "Vehicle": f"{selected_car['MAKE_DISPLAY']} {selected_car['MODEL_DISPLAY']} {year_val}",
-                        "From": start_addr,
-                        "To": end_addr,
-                        "Cost": f"RM {final_cost:.2f}",
-                    }
+                results = []
+                for idx, route_option in enumerate(directions, start=1):
+                    results.append(
+                        build_route_result(route_option, idx, consumption_rate, fuel_price)
+                    )
+                st.session_state.pending_route_results = results
+                st.session_state.pending_route_directions = directions
+                st.session_state.selected_route_index = None
+                st.session_state.selected_route_meta = {
+                    "selected_car": selected_car.to_dict(),
+                    "year_val": int(year_val),
+                    "fuel_price": float(fuel_price),
+                    "start_addr": start_addr,
+                    "end_addr": end_addr,
+                    "dep_datetime": dep_datetime.strftime("%d/%m %H:%M"),
+                }
+                st.session_state.latest_nav_url = None
+                st.session_state.selected_route_history_saved = False
+                st.rerun()
+
+                st.markdown(
+                    '<div class="field-label" style="margin-top:1rem;">Route Options</div>',
+                    unsafe_allow_html=True,
                 )
+                route_columns = st.columns(3)
+                for idx, route_result in enumerate(results[:3]):
+                    route_card_html = f"""
+                        <div class="metric-card" style="height:100%;">
+                            <div class="metric-eyebrow">{html.escape(route_result["summary"])}</div>
+                            <div class="metric-number" style="font-size:1.7rem;">RM {route_result["final_cost"]:.2f}</div>
+                            <div class="metric-note">{route_result["dist_km"]:.1f} km • {route_result["traffic_min"]:.0f} min</div>
+                            <div class="metric-note" style="margin-top:0.45rem;">
+                                {route_result["average_speed"]:.1f} km/h • {route_result["env_multiplier"]:.2f}x
+                            </div>
+                        </div>
+                    """
+                    with route_columns[idx]:
+                        st.markdown(route_card_html, unsafe_allow_html=True)
+                        if st.button("Choose This Route", key=f"choose_route_{idx}"):
+                            st.session_state.selected_route_index = idx
+                            st.session_state.latest_nav_url = (
+                                f"https://www.google.com/maps/dir/?api=1"
+                                f"&origin={start_addr}&destination={end_addr}&travelmode=driving"
+                            ).replace(" ", "+")
+                            st.session_state.selected_route_history_saved = False
+
             else:
                 st.session_state.latest_nav_url = None
+                st.session_state.pending_route_results = []
+                st.session_state.pending_route_directions = []
+                st.session_state.selected_route_index = None
+                st.session_state.selected_route_meta = {}
+                st.session_state.selected_route_history_saved = False
                 st.error("Could not find a valid driving route for the selected locations.")
         else:
             st.session_state.latest_nav_url = None
+            st.session_state.pending_route_results = []
+            st.session_state.pending_route_directions = []
+            st.session_state.selected_route_index = None
+            st.session_state.selected_route_meta = {}
+            st.session_state.selected_route_history_saved = False
             st.warning("Please choose both the starting point and destination from the search boxes.")
+
+    if (
+        st.session_state.pending_route_results
+        and st.session_state.selected_route_index is None
+    ):
+        st.markdown(
+            """
+            <div class="section-card" style="margin-top:1rem;">
+                <div class="section-header">
+                    <div>
+                        <p class="section-title">4. Choose Route</p>
+                        <p class="section-subtitle">Pick one route option first. Then the trip summary will be shown for that route.</p>
+                    </div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        route_columns = st.columns(3)
+        for idx, route_result in enumerate(st.session_state.pending_route_results[:3]):
+            route_card_html = f"""
+                <div class="metric-card" style="height:100%;">
+                    <div class="metric-eyebrow">{html.escape(route_result["summary"])}</div>
+                    <div class="metric-number" style="font-size:1.7rem;">RM {route_result["final_cost"]:.2f}</div>
+                    <div class="metric-note">{route_result["dist_km"]:.1f} km | {route_result["traffic_min"]:.0f} min</div>
+                    <div class="metric-note" style="margin-top:0.45rem;">
+                        {route_result["average_speed"]:.1f} km/h | {route_result["env_multiplier"]:.2f}x
+                    </div>
+                </div>
+            """
+            with route_columns[idx]:
+                st.markdown(route_card_html, unsafe_allow_html=True)
+                if st.button("Choose This Route", key=f"choose_route_persist_{idx}"):
+                    st.session_state.selected_route_index = idx
+                    st.session_state.latest_nav_url = (
+                        f"https://www.google.com/maps/dir/?api=1"
+                        f"&origin={st.session_state.selected_route_meta['start_addr']}"
+                        f"&destination={st.session_state.selected_route_meta['end_addr']}"
+                        f"&travelmode=driving"
+                    ).replace(" ", "+")
+                    st.session_state.selected_route_history_saved = False
+                    st.rerun()
+
+    if (
+        st.session_state.selected_route_index is not None
+        and st.session_state.pending_route_directions
+        and st.session_state.selected_route_meta
+    ):
+        selected_route = st.session_state.pending_route_directions[
+            st.session_state.selected_route_index
+        ]
+        selected_car_series = pd.Series(st.session_state.selected_route_meta["selected_car"])
+        final_cost = render_result_panels(
+            selected_route,
+            selected_car_series,
+            st.session_state.selected_route_meta["year_val"],
+            st.session_state.selected_route_meta["fuel_price"],
+            model,
+            le_fuel,
+            le_class,
+        )
+
+        if not st.session_state.selected_route_history_saved:
+            st.session_state.history.append(
+                {
+                    "Date": st.session_state.selected_route_meta["dep_datetime"],
+                    "Vehicle": (
+                        f"{selected_car_series['MAKE_DISPLAY']} "
+                        f"{selected_car_series['MODEL_DISPLAY']} "
+                        f"{st.session_state.selected_route_meta['year_val']}"
+                    ),
+                    "From": st.session_state.selected_route_meta["start_addr"],
+                    "To": st.session_state.selected_route_meta["end_addr"],
+                    "Cost": f"RM {final_cost:.2f}",
+                }
+            )
+            st.session_state.selected_route_history_saved = True
+
+        if st.button("Choose a Different Route", key="choose_different_route"):
+            st.session_state.selected_route_index = None
+            st.session_state.latest_nav_url = None
+            st.session_state.selected_route_history_saved = False
+            st.rerun()
 
 if st.session_state.latest_nav_url:
     st.markdown(
