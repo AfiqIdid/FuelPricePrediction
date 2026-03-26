@@ -1,7 +1,9 @@
 import html
+import json
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
+from urllib.request import Request, urlopen
 
 import googlemaps
 import joblib
@@ -158,19 +160,18 @@ def inject_styles():
 
         .fuel-header-grid {
             display: grid;
-            grid-template-columns: repeat(4, minmax(0, 1fr));
-            gap: 0.85rem;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 0.9rem;
             margin-top: 1rem;
             align-items: stretch;
         }
 
         .fuel-header-card {
-            padding: 0.95rem 1rem;
-            border-radius: 20px;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            background: rgba(15, 23, 42, 0.62);
-            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
-            min-height: 88px;
+            padding: 1rem 1.1rem;
+            border-radius: 22px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            box-shadow: 0 10px 22px rgba(2, 6, 23, 0.18);
+            min-height: 92px;
         }
 
         .fuel-header-label {
@@ -270,16 +271,26 @@ def inject_styles():
         }
 
         div[data-testid="stRadio"] [role="radiogroup"] label:nth-of-type(2) {
+            background: linear-gradient(135deg, #eab308, #ca8a04);
+            color: #111827 !important;
+        }
+
+        div[data-testid="stRadio"] [role="radiogroup"] label:nth-of-type(3) {
             background: linear-gradient(135deg, #22c55e, #16a34a);
             color: #f8fafc !important;
         }
 
-        div[data-testid="stRadio"] [role="radiogroup"] label:nth-of-type(3) {
+        div[data-testid="stRadio"] [role="radiogroup"] label:nth-of-type(4) {
             background: linear-gradient(135deg, #ef4444, #dc2626);
             color: #fef2f2 !important;
         }
 
-        div[data-testid="stRadio"] [role="radiogroup"] label:nth-of-type(4) {
+        div[data-testid="stRadio"] [role="radiogroup"] label:nth-of-type(5) {
+            background: linear-gradient(135deg, #fb923c, #ea580c);
+            color: #fff7ed !important;
+        }
+
+        div[data-testid="stRadio"] [role="radiogroup"] label:nth-of-type(6) {
             background: linear-gradient(135deg, #111827, #000000);
             color: #f8fafc !important;
         }
@@ -689,12 +700,6 @@ def inject_styles():
                 grid-template-columns: repeat(2, minmax(0, 1fr));
             }
         }
-
-        @media (max-width: 560px) {
-            .fuel-header-grid {
-                grid-template-columns: 1fr;
-            }
-        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -771,23 +776,66 @@ def search_option_labels(searchterm: str, options, limit=4):
     ][:limit]
 
 
-@st.cache_data(ttl=86400)
+@st.cache_data(ttl=900)
 def get_live_fuel_prices():
+    def first_numeric_value(row, keys, fallback):
+        for key in keys:
+            value = pd.to_numeric(row.get(key), errors="coerce")
+            if pd.notna(value):
+                return float(value)
+        return fallback
+
     try:
-        url = "https://api.data.gov.my/data-catalogue?id=fuelprice&limit=1"
-        response = pd.read_json(url)
-        latest = response.iloc[0]
+        url = "https://api.data.gov.my/data-catalogue?id=fuelprice&limit=1&sort=-date"
+        request = Request(
+            url,
+            headers={"User-Agent": "Mozilla/5.0 FuelTripCostPredictor/1.0"},
+        )
+        with urlopen(request, timeout=15) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+
+        records = payload.get("data") if isinstance(payload, dict) else payload
+        if not records:
+            raise ValueError("Fuel price API returned no rows.")
+
+        latest = records[0]
+        ron95_price = first_numeric_value(
+            latest,
+            ["ron95", "ron_95", "ron95_unsubsidized"],
+            1.99,
+        )
+        budi95_price = first_numeric_value(
+            latest,
+            ["ron95_budi", "ron95_bersubsidi", "ron95_subsidized"],
+            1.99,
+        )
+        ron97_price = first_numeric_value(latest, ["ron97", "ron_97"], 4.55)
+        diesel_price = first_numeric_value(
+            latest,
+            [
+                "diesel_white_peninsula",
+                "diesel_white_peninsular",
+                "diesel_peninsula",
+                "diesel",
+            ],
+            4.72,
+        )
+
         return {
-            "RON 95": 1.99,
-            "RON 97": float(latest["ron97"]),
-            "RON 100": 6.20,
-            "Diesel": float(latest["diesel_white_peninsula"]),
+            "RON 95": ron95_price,
+            "BUDI 95": budi95_price,
+            "RON 97": ron97_price,
+            "RON 100": 7.50,
+            "V-Power Racing": 7.88,
+            "Diesel": diesel_price,
         }
     except Exception:
         return {
             "RON 95": 1.99,
+            "BUDI 95": 1.99,
             "RON 97": 4.55,
-            "RON 100": 6.20,
+            "RON 100": 7.50,
+            "V-Power Racing": 7.88,
             "Diesel": 4.72,
         }
 
@@ -803,10 +851,12 @@ SEARCHBOX_STYLE = {
 }
 
 FUEL_OPTION_META = {
-    "RON 95": {"icon": "🟡", "price_key": "RON 95"},
-    "RON 97": {"icon": "🟢", "price_key": "RON 97"},
-    "RON 100": {"icon": "🔴", "price_key": "RON 100"},
-    "Diesel": {"icon": "⚫", "price_key": "Diesel"},
+    "RON 95": {"icon": "R95", "price_key": "RON 95"},
+    "BUDI 95": {"icon": "B95", "price_key": "BUDI 95"},
+    "RON 97": {"icon": "R97", "price_key": "RON 97"},
+    "RON 100": {"icon": "R100", "price_key": "RON 100"},
+    "V-Power Racing": {"icon": "VPR", "price_key": "V-Power Racing"},
+    "Diesel": {"icon": "DSL", "price_key": "Diesel"},
 }
 
 
@@ -1087,6 +1137,8 @@ if "selected_route_history_saved" not in st.session_state:
     st.session_state.selected_route_history_saved = False
 if "fuel_type_option" not in st.session_state:
     st.session_state.fuel_type_option = "RON 95"
+elif st.session_state.fuel_type_option not in FUEL_OPTION_META:
+    st.session_state.fuel_type_option = "RON 95"
 if "fuel_price_manual_override" not in st.session_state:
     st.session_state.fuel_price_manual_override = False
 if "fuel_price" not in st.session_state:
@@ -1103,8 +1155,10 @@ sync_fuel_price_from_selected_type()
 cards_html = ""
 color_map = {
     "RON 95": "#facc15",  # Yellow
+    "BUDI 95": "#fde68a", # Soft Yellow
     "RON 97": "#4ade80",  # Green
     "RON 100": "#fb7185", # Red/Pink
+    "V-Power Racing": "#f97316", # Orange
     "Diesel": "#94a3b8"   # Grey/Silver
 }
 for label, price in LIVE_PRICES.items():
