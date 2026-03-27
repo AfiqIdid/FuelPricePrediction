@@ -1,6 +1,7 @@
 import html
 import json
 import os
+import re
 from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.request import Request, urlopen
@@ -712,6 +713,22 @@ def pick_display_value(values):
     return preferred_values[0] if preferred_values else unique_values[0]
 
 
+def to_title_display(value: str) -> str:
+    words = []
+    for word in str(value).strip().split():
+        parts = re.split(r"([-/()])", word)
+        formatted_parts = []
+        for part in parts:
+            if not part or re.fullmatch(r"[-/()]", part):
+                formatted_parts.append(part)
+            elif any(char.isalpha() for char in part):
+                formatted_parts.append(part[:1].upper() + part[1:].lower())
+            else:
+                formatted_parts.append(part)
+        words.append("".join(formatted_parts))
+    return " ".join(words)
+
+
 @st.cache_data
 def load_csv_data(_csv_mtime_ns):
     df = pd.read_csv(CSV_PATH, low_memory=False)
@@ -730,8 +747,14 @@ def load_csv_data(_csv_mtime_ns):
         df[col] = df[col].astype(str).str.strip().str.replace(r"\s+", " ", regex=True)
     df["MAKE_KEY"] = df["MAKE"].str.upper()
     df["MODEL_KEY"] = df["MODEL"].str.upper()
-    df["MAKE_DISPLAY"] = df.groupby("MAKE_KEY")["MAKE"].transform(pick_display_value)
-    df["MODEL_DISPLAY"] = df.groupby(["MAKE_KEY", "MODEL_KEY"])["MODEL"].transform(pick_display_value)
+    df["MAKE_DISPLAY"] = (
+        df.groupby("MAKE_KEY")["MAKE"].transform(pick_display_value).map(to_title_display)
+    )
+    df["MODEL_DISPLAY"] = (
+        df.groupby(["MAKE_KEY", "MODEL_KEY"])["MODEL"]
+        .transform(pick_display_value)
+        .map(to_title_display)
+    )
     df["YEAR"] = df["YEAR"].astype(int)
     return df.reset_index(drop=True)
 
@@ -765,6 +788,15 @@ def search_brands(searchterm: str):
         brand_options["MAKE_DISPLAY"].str.contains(searchterm, case=False, na=False)
     ]["MAKE_DISPLAY"].tolist()
     return matches[:4]
+
+
+def search_vehicles(searchterm: str):
+    if not searchterm.strip():
+        return vehicle_options["VEHICLE_LABEL"].tolist()[:6]
+    matches = vehicle_options[
+        vehicle_options["VEHICLE_LABEL"].str.contains(searchterm, case=False, na=False)
+    ]["VEHICLE_LABEL"].tolist()
+    return matches[:6]
 
 
 def search_option_labels(searchterm: str, options, limit=4):
@@ -831,12 +863,7 @@ def get_live_fuel_prices():
         }
     except Exception:
         return {
-            "RON 95": 1.99,
-            "BUDI 95": 1.99,
-            "RON 97": 4.55,
-            "RON 100": 7.50,
-            "V-Power Racing": 7.88,
-            "Diesel": 4.72,
+
         }
 
 
@@ -1196,14 +1223,20 @@ brand_options = (
     .drop_duplicates()
     .sort_values("MAKE_DISPLAY")
 )
-brand_keys = brand_options["MAKE_KEY"].tolist()
+vehicle_options = (
+    vehicle_df[["MAKE_KEY", "MODEL_KEY", "MAKE_DISPLAY", "MODEL_DISPLAY"]]
+    .drop_duplicates()
+    .assign(
+        VEHICLE_LABEL=lambda df: df["MAKE_DISPLAY"].str.strip() + " " + df["MODEL_DISPLAY"].str.strip()
+    )
+    .sort_values("VEHICLE_LABEL")
+)
 st.markdown(
     """
     <div class="section-card">
         <div class="section-header">
             <div>
                 <p class="section-title">1. Choose Vehicle</p>
-                <p class="section-subtitle">Choose the brand, model, and year that should drive the prediction.</p>
             </div>
         </div>
     </div>
@@ -1211,58 +1244,28 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.markdown('<div class="field-label">Brand</div>', unsafe_allow_html=True)
-brand_display = st_searchbox(
-    search_brands,
-    key="brand_search",
-    placeholder="Search brand",
+st.markdown('<div class="field-label">Vehicle</div>', unsafe_allow_html=True)
+vehicle_display = st_searchbox(
+    search_vehicles,
+    key="vehicle_search",
+    placeholder="Search brand or model",
     style_overrides=SEARCHBOX_STYLE,
-    default_options=brand_options["MAKE_DISPLAY"].tolist()[:4],
+    default_options=vehicle_options["VEHICLE_LABEL"].tolist()[:6],
     style_absolute=False,
 )
-brand = None
-if brand_display:
-    brand_match = brand_options.loc[
-        brand_options["MAKE_DISPLAY"].str.casefold() == brand_display.casefold(),
-        "MAKE_KEY",
+
+selected_vehicle_option = None
+if vehicle_display:
+    vehicle_match = vehicle_options.loc[
+        vehicle_options["VEHICLE_LABEL"].str.casefold() == vehicle_display.casefold()
     ]
-    if not brand_match.empty:
-        brand = brand_match.iloc[0]
+    if not vehicle_match.empty:
+        selected_vehicle_option = vehicle_match.iloc[0]
 
-if brand:
-    brand_models = (
-        vehicle_df.loc[vehicle_df["MAKE_KEY"] == brand, ["MODEL_KEY", "MODEL_DISPLAY"]]
-        .drop_duplicates()
-        .sort_values("MODEL_DISPLAY")
-    )
-    model_display = st_searchbox(
-        lambda term: search_option_labels(
-            term,
-            brand_models["MODEL_DISPLAY"].tolist(),
-        ),
-        key="model_search",
-        placeholder="Search model",
-        style_overrides=SEARCHBOX_STYLE,
-        default_options=brand_models["MODEL_DISPLAY"].tolist()[:4],
-        style_absolute=False,
-    )
-    model_name = None
-    if model_display:
-        model_match = brand_models.loc[
-            brand_models["MODEL_DISPLAY"].str.casefold() == model_display.casefold(),
-            "MODEL_KEY",
-        ]
-        if not model_match.empty:
-            model_name = model_match.iloc[0]
-else:
-    st.session_state.pop("model_search", None)
-    st.text_input("Model", value="Select a brand first", disabled=True)
-    brand_models = pd.DataFrame(columns=["MODEL_KEY", "MODEL_DISPLAY"])
-    model_name = None
-
-if brand and model_name:
+if selected_vehicle_option is not None:
     matching_rows = vehicle_df[
-        (vehicle_df["MAKE_KEY"] == brand) & (vehicle_df["MODEL_KEY"] == model_name)
+        (vehicle_df["MAKE_KEY"] == selected_vehicle_option["MAKE_KEY"])
+        & (vehicle_df["MODEL_KEY"] == selected_vehicle_option["MODEL_KEY"])
     ]
     year_options = sorted(matching_rows["YEAR"].unique(), reverse=True)
     year_display = st_searchbox(
@@ -1276,7 +1279,7 @@ if brand and model_name:
     year_val = int(year_display) if year_display else None
 else:
     st.session_state.pop("year_search", None)
-    st.text_input("Year", value="Select a model first", disabled=True)
+    st.text_input("Year", value="Select a vehicle first", disabled=True)
     matching_rows = pd.DataFrame()
     year_val = None
 
@@ -1291,7 +1294,6 @@ with calc_tab:
             <div class="section-header">
                 <div>
                     <p class="section-title">2. Choose Location</p>
-                    <p class="section-subtitle">Enter your starting point, destination, and departure time.</p>
                 </div>
             </div>
         </div>
@@ -1360,7 +1362,7 @@ with calc_tab:
             f"""
             <div class="section-card" style="margin-top:1.9rem; margin-bottom:0;">
                 <div class="section-title">Selected Fuel</div>
-                <div class="section-subtitle">{FUEL_OPTION_META[st.session_state.fuel_type_option]["icon"]} {st.session_state.fuel_type_option}: RM {st.session_state.fuel_price:.2f}</div>
+                <div class="section-subtitle">{FUEL_OPTION_META[st.session_state.fuel_type_option]["icon"]}: RM{st.session_state.fuel_price:.2f}</div>
             </div>
             """,
             unsafe_allow_html=True,
