@@ -1059,6 +1059,20 @@ def render_result_panels(route, selected_car, year_val, fuel_price, model, le_fu
     base_cost = route_result["base_cost"]
     environment_extra = route_result["environment_extra"]
 
+    cost_html = f"""
+        <div class="cost-card">
+            <div class="cost-title">Estimated Trip Cost</div>
+            <div class="cost-value">RM {final_cost:.2f}</div>
+            <div class="cost-copy">
+                Distance: {route_result["dist_km"]:.1f} km<br/>
+                Average Speed: {average_speed:.1f} km/h<br/>
+                Travel Time: {route_result["traffic_min"]:.0f} mins<br/>
+                Fuel needed: {final_liters:.1f} L<br/>
+            </div>
+        </div>
+    """
+    st.markdown(cost_html, unsafe_allow_html=True)
+
     summary_html = f"""
         <div class="summary-card">
             <div class="summary-label">Trip Summary</div>
@@ -1079,60 +1093,6 @@ def render_result_panels(route, selected_car, year_val, fuel_price, model, le_fu
         </div>
     """
     st.markdown(summary_html, unsafe_allow_html=True)
-
-    environment_html = f"""
-        <div class="summary-card" style="margin-top:1rem;">
-            <div class="summary-label">Detected Environment</div>
-            <p class="summary-route" style="margin-bottom:0.7rem; color:{environment_color};">{environment_label}</p>
-            <div class="summary-grid">
-                <div class="summary-pill">
-                    <span class="summary-label">Average Speed</span>
-                    <strong>{average_speed:.1f} km/h</strong>
-                </div>
-                <div class="summary-pill">
-                    <span class="summary-label">Smart Multiplier</span>
-                    <strong>{env_multiplier:.2f}x</strong>
-                </div>
-            </div>
-        </div>
-    """
-    st.markdown(environment_html, unsafe_allow_html=True)
-
-    metrics_html = f"""
-        <div class="metrics-row">
-            <div class="metric-card">
-                <div class="metric-eyebrow">Distance</div>
-                <div class="metric-number">{route_result["dist_km"]:.1f}</div>
-                <div class="metric-note">Kilometers on this route</div>
-            </div>
-            <div class="metric-card">
-                <div class="metric-eyebrow">Travel Time</div>
-                <div class="metric-number">{route_result["traffic_min"]:.0f}</div>
-                <div class="metric-note">Minutes with live traffic</div>
-            </div>
-            <div class="metric-card">
-                <div class="metric-eyebrow">Fuel Needed</div>
-                <div class="metric-number">{final_liters:.1f}</div>
-                <div class="metric-note">Liters after smart environment multiplier</div>
-            </div>
-        </div>
-    """
-    st.markdown(metrics_html, unsafe_allow_html=True)
-
-    cost_html = f"""
-        <div class="cost-card">
-            <div class="cost-title">Estimated Trip Cost</div>
-            <div class="cost-value">RM {final_cost:.2f}</div>
-            <div class="cost-copy">
-                Fuel price used: RM {fuel_price:.2f}/L<br/>
-                Formula: ({route_result["dist_km"]:.1f} / 100) x {l_100km_pred:.1f} x {env_multiplier:.2f} x {fuel_price:.2f}<br/>
-                Base fuel cost: RM {base_cost:.2f}<br/>
-                Environment impact: RM {environment_extra:.2f}<br/>
-                {prediction_note}
-            </div>
-        </div>
-    """
-    st.markdown(cost_html, unsafe_allow_html=True)
 
     return final_cost
 
@@ -1481,9 +1441,6 @@ with calc_tab:
                     <div class="metric-eyebrow">{html.escape(route_result["summary"])}</div>
                     <div class="metric-number" style="font-size:1.7rem;">RM {route_result["final_cost"]:.2f}</div>
                     <div class="metric-note">{route_result["dist_km"]:.1f} km | {route_result["traffic_min"]:.0f} min</div>
-                    <div class="metric-note" style="margin-top:0.45rem;">
-                        {route_result["average_speed"]:.1f} km/h | {route_result["env_multiplier"]:.2f}x
-                    </div>
                 </div>
             """
             with route_columns[idx]:
