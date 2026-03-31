@@ -742,7 +742,18 @@ def load_csv_data(_csv_mtime_ns):
         "CYLINDERS",
         "COMB (L/100 km)",
     ]
-    df = df[cols].dropna().copy()
+    required_cols = [
+        "YEAR",
+        "MAKE",
+        "MODEL",
+        "ENGINE SIZE",
+        "CYLINDERS",
+        "COMB (L/100 km)",
+    ]
+    df = df[cols].copy()
+    df = df.dropna(subset=required_cols)
+    df["VEHICLE CLASS"] = df["VEHICLE CLASS"].fillna("Unknown")
+    df["FUEL"] = df["FUEL"].fillna("Unknown")
     for col in ["MAKE", "MODEL", "VEHICLE CLASS", "FUEL"]:
         df[col] = df[col].astype(str).str.strip().str.replace(r"\s+", " ", regex=True)
     df["MAKE_KEY"] = df["MAKE"].str.upper()
@@ -961,9 +972,9 @@ def get_route_info(start, end, dep_time: datetime):
 
 
 def get_traffic_level(traffic_ratio):
-    if traffic_ratio >= 1.4:
+    if traffic_ratio >= 1.2:
         return "Heavy", "var(--bad)"
-    if traffic_ratio >= 1.15:
+    if traffic_ratio >= 1.05:
         return "Moderate", "var(--warn)"
     return "Light", "var(--good)"
 
@@ -976,9 +987,9 @@ def calculate_average_speed(dist_km, traffic_min):
 
 def get_environment_profile(average_speed):
     if average_speed < 25:
-        return 1.35, "Residential/School Zone - High stop-start", "var(--bad)"
+        return 1.6, "Residential/School Zone - High stop-start", "var(--bad)"
     if average_speed < 55:
-        return 1.15, "Mixed City Road", "var(--warn)"
+        return 1.4, "Mixed City Road", "var(--warn)"
     if average_speed <= 85:
         return 1.00, "Standard Flow", "var(--good)"
     return 0.90, "Highway Cruising - High Efficiency", "#93c5fd"
@@ -1162,8 +1173,8 @@ st.markdown(
     <div class="hero-shell">
         <h1 class="hero-title">Fuel Trip <span>Cost Predictor</span></h1>
         <p class="hero-copy">
-            Plan a drive, check traffic-aware fuel cost, and compare the impact of vehicle choice,
-            time of departure, and current pump price in one place.
+            Plan a drive, check traffic aware fuel cost, and compare the impact of vehicle choice,
+            time of departure, and current fuel price in one place.
         </p>
         <div class="fuel-header-grid">
             {cards_html}
