@@ -6,3 +6,5 @@ joblib
 scikit-learn
 streamlit-searchbox
 python-dotenv
+numpy
+gunicorn

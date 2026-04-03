@@ -4,6 +4,7 @@ import os
 import re
 from datetime import datetime, timedelta
 from pathlib import Path
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 import googlemaps
@@ -854,8 +855,8 @@ def get_live_fuel_prices():
         )
 
         return {
-            "RON 95": ron95_price,
             "BUDI 95": budi95_price,
+            "RON 95": ron95_price,
             "RON 97": ron97_price,
             "RON 100": 7.50,
             "V-Power Racing": 7.88,
@@ -878,8 +879,8 @@ SEARCHBOX_STYLE = {
 }
 
 FUEL_OPTION_META = {
-    "RON 95": {"icon": "R95", "price_key": "RON 95"},
     "BUDI 95": {"icon": "B95", "price_key": "BUDI 95"},
+    "RON 95": {"icon": "R95", "price_key": "RON 95"},
     "RON 97": {"icon": "R97", "price_key": "RON 97"},
     "RON 100": {"icon": "R100", "price_key": "RON 100"},
     "V-Power Racing": {"icon": "VPR", "price_key": "V-Power Racing"},
@@ -934,12 +935,64 @@ def nudge_fuel_price(delta):
 
 
 def sync_departure_time():
-    st.session_state.departure_time = datetime.now().replace(
-        hour=int(st.session_state.departure_hour),
-        minute=int(st.session_state.departure_minute),
-        second=0,
-        microsecond=0,
-    ).time()
+    st.session_state.departure_time = st.session_state.departure_time_widget
+
+
+def get_selected_departure_datetime(selected_time):
+    now = datetime.now()
+    dep_datetime = datetime.combine(now.date(), selected_time)
+    if dep_datetime < now:
+        dep_datetime += timedelta(days=1)
+    return dep_datetime
+
+
+def extract_route_waypoints(route_option, max_waypoints=3):
+    legs = route_option.get("legs") or []
+    if not legs:
+        return []
+
+    steps = legs[0].get("steps") or []
+    if len(steps) <= 2:
+        return []
+
+    intermediate_points = []
+    for step in steps[:-1]:
+        end_location = step.get("end_location") or {}
+        lat = end_location.get("lat")
+        lng = end_location.get("lng")
+        if lat is None or lng is None:
+            continue
+        intermediate_points.append(f"{lat},{lng}")
+
+    if len(intermediate_points) <= max_waypoints:
+        return intermediate_points
+
+    sampled_points = []
+    total = len(intermediate_points)
+    for idx in range(1, max_waypoints + 1):
+        point_index = round(idx * (total + 1) / (max_waypoints + 1)) - 1
+        point_index = max(0, min(total - 1, point_index))
+        sampled_points.append(intermediate_points[point_index])
+
+    deduped_points = []
+    for point in sampled_points:
+        if point not in deduped_points:
+            deduped_points.append(point)
+    return deduped_points
+
+
+def build_google_maps_url(origin, destination, dep_datetime: datetime, route_option=None):
+    params = {
+        "api": 1,
+        "origin": origin,
+        "destination": destination,
+        "travelmode": "driving",
+        "departure_time": int(dep_datetime.timestamp()),
+    }
+    route_waypoints = extract_route_waypoints(route_option) if route_option else []
+    if route_waypoints:
+        params["waypoints"] = "|".join(route_waypoints)
+    return f"https://www.google.com/maps/dir/?{urlencode(params)}"
 
 
 def get_route_info(start, end, dep_time: datetime):
@@ -976,12 +1029,12 @@ def calculate_average_speed(dist_km, traffic_min):
 
 def get_environment_profile(average_speed):
     if average_speed < 25:
-        return 1.35, "Residential/School Zone - High stop-start", "var(--bad)"
+        return 1.60, "Residential/School Zone - High stop-start", "var(--bad)"
     if average_speed < 55:
-        return 1.15, "Mixed City Road", "var(--warn)"
+        return 1.40, "Mixed City Road", "var(--warn)"
     if average_speed <= 85:
-        return 1.00, "Standard Flow", "var(--good)"
-    return 0.90, "Highway Cruising - High Efficiency", "#93c5fd"
+        return 1.20, "Standard Flow", "var(--good)"
+    return 1.15, "Highway Cruising - High Efficiency", "#93c5fd"
 
 
 def get_consumption_rate(selected_car, year_val, model, le_fuel, le_class):
@@ -1106,6 +1159,8 @@ if "history" not in st.session_state:
     st.session_state.history = []
 if "departure_time" not in st.session_state:
     st.session_state.departure_time = datetime.now().replace(second=0, microsecond=0).time()
+if "departure_time_widget" not in st.session_state:
+    st.session_state.departure_time_widget = st.session_state.departure_time
 if "departure_hour" not in st.session_state:
     st.session_state.departure_hour = f"{st.session_state.departure_time.hour:02d}"
 if "departure_minute" not in st.session_state:
@@ -1123,13 +1178,13 @@ if "selected_route_meta" not in st.session_state:
 if "selected_route_history_saved" not in st.session_state:
     st.session_state.selected_route_history_saved = False
 if "fuel_type_option" not in st.session_state:
-    st.session_state.fuel_type_option = "RON 95"
+    st.session_state.fuel_type_option = "BUDI 95"
 elif st.session_state.fuel_type_option not in FUEL_OPTION_META:
-    st.session_state.fuel_type_option = "RON 95"
+    st.session_state.fuel_type_option = "BUDI 95"
 if "fuel_price_manual_override" not in st.session_state:
     st.session_state.fuel_price_manual_override = False
 if "fuel_price" not in st.session_state:
-    st.session_state.fuel_price = round(LIVE_PRICES["RON 95"], 2)
+    st.session_state.fuel_price = round(LIVE_PRICES["BUDI 95"], 2)
 if "fuel_price_slider" not in st.session_state:
     st.session_state.fuel_price_slider = st.session_state.fuel_price
 if "fuel_price_input" not in st.session_state:
@@ -1231,7 +1286,7 @@ if selected_vehicle_option is not None:
     year_display = st_searchbox(
         lambda term: search_option_labels(term, [str(year) for year in year_options]),
         key="year_search",
-        placeholder="Search year",
+        placeholder="Choose car year",
         style_overrides=SEARCHBOX_STYLE,
         default_options=[str(year) for year in year_options[:4]],
         style_absolute=False,
@@ -1277,7 +1332,7 @@ with calc_tab:
     )
 
     st.time_input(
-        "Departure Time",
+        "Departure Time (Time will follow live traffic from google maps)",
         key="departure_time_widget",
         on_change=sync_departure_time,
     )
@@ -1342,10 +1397,7 @@ with calc_tab:
             st.session_state.selected_route_history_saved = False
             st.warning("Please search and select a brand, model, and year first.")
         elif start_addr and end_addr:
-            now = datetime.now()
-            dep_datetime = datetime.combine(now.date(), chosen_time)
-            if dep_datetime < now:
-                dep_datetime += timedelta(days=1)
+            dep_datetime = get_selected_departure_datetime(chosen_time)
 
             with st.spinner("Calculating route and fuel estimate..."):
                 directions = get_route_info(start_addr, end_addr, dep_datetime)
@@ -1368,6 +1420,7 @@ with calc_tab:
                     "fuel_price": float(fuel_price),
                     "start_addr": start_addr,
                     "end_addr": end_addr,
+                    "dep_datetime_unix": int(dep_datetime.timestamp()),
                     "dep_datetime": dep_datetime.strftime("%d/%m %H:%M"),
                 }
                 st.session_state.latest_nav_url = None
@@ -1394,9 +1447,11 @@ with calc_tab:
                         st.markdown(route_card_html, unsafe_allow_html=True)
                         if st.button("Choose This Route", key=f"choose_route_{idx}"):
                             st.session_state.selected_route_index = idx
-                            st.session_state.latest_nav_url = (
-                                f"https://www.google.com/maps/dir/?api=1"
-                                f"&origin={start_addr}&destination={end_addr}&travelmode=driving"
+                            st.session_state.latest_nav_url = build_google_maps_url(
+                                start_addr,
+                                end_addr,
+                                dep_datetime,
+                                route_option,
                             ).replace(" ", "+")
                             st.session_state.selected_route_history_saved = False
 
@@ -1447,11 +1502,13 @@ with calc_tab:
                 st.markdown(route_card_html, unsafe_allow_html=True)
                 if st.button("Choose This Route", key=f"choose_route_persist_{idx}"):
                     st.session_state.selected_route_index = idx
-                    st.session_state.latest_nav_url = (
-                        f"https://www.google.com/maps/dir/?api=1"
-                        f"&origin={st.session_state.selected_route_meta['start_addr']}"
-                        f"&destination={st.session_state.selected_route_meta['end_addr']}"
-                        f"&travelmode=driving"
+                    st.session_state.latest_nav_url = build_google_maps_url(
+                        st.session_state.selected_route_meta["start_addr"],
+                        st.session_state.selected_route_meta["end_addr"],
+                        datetime.fromtimestamp(
+                            st.session_state.selected_route_meta["dep_datetime_unix"]
+                        ),
+                        st.session_state.pending_route_directions[idx],
                     ).replace(" ", "+")
                     st.session_state.selected_route_history_saved = False
                     st.rerun()
