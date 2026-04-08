@@ -20,7 +20,7 @@ load_dotenv()
 st.set_page_config(
     page_title="Fuel Trip Cost Predictor",
     layout="wide",
-    page_icon="car",
+    page_icon="⛽",
 )
 
 try:
@@ -37,10 +37,263 @@ FUEL_ENCODER_PATH = BASE_DIR / "fuel_encoder.pkl"
 CLASS_ENCODER_PATH = BASE_DIR / "class_encoder.pkl"
 
 
-def inject_styles():
+def inject_styles(theme_mode="dark"):
+    light_theme_overrides = """
+        :root {
+            --background: #fff8f1;
+            --foreground: #0f172a;
+            --card: rgba(255, 255, 255, 0.9);
+            --card-foreground: #0f172a;
+            --muted: rgba(148, 163, 184, 0.14);
+            --muted-foreground: #5b6472;
+            --accent: rgba(251, 146, 60, 0.14);
+            --accent-strong: #ea580c;
+            --accent-soft: #fb923c;
+            --border: rgba(148, 163, 184, 0.22);
+            --ring: rgba(234, 88, 12, 0.22);
+            --good: #16a34a;
+            --warn: #ca8a04;
+            --bad: #dc2626;
+        }
+
+        .stApp {
+            background:
+                radial-gradient(circle at top left, rgba(251, 146, 60, 0.16), transparent 26%),
+                radial-gradient(circle at 85% 10%, rgba(255, 199, 107, 0.18), transparent 18%),
+                linear-gradient(145deg, #ffe8d1 0%, #fff3e8 44%, #fffaf4 100%);
+        }
+
+        .hero-shell {
+            background:
+                radial-gradient(circle at top right, rgba(59, 130, 246, 0.08), transparent 28%),
+                linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(255, 249, 242, 0.94));
+            box-shadow: 0 22px 52px rgba(148, 163, 184, 0.16);
+        }
+
+        .hero-copy,
+        .hero-chip,
+        .fuel-header-label,
+        .section-subtitle,
+        .mini-badge,
+        .metric-eyebrow,
+        .metric-note,
+        .summary-label,
+        .cost-copy,
+        .empty-state {
+            color: #475569 !important;
+        }
+
+        .hero-title,
+        .fuel-header-value,
+        .section-title,
+        .field-label,
+        .wheel-title,
+        .summary-route,
+        .summary-pill strong,
+        .metric-number,
+        .fuel-header-card,
+        div[data-testid="stRadio"] > label,
+        div[data-testid="stSelectbox"] label,
+        div[data-testid="stSlider"] label,
+        div[data-testid="stTimeInput"] label,
+        div[data-testid="stNumberInput"] label,
+        [data-testid="stTable"] table {
+            color: #0f172a !important;
+        }
+
+        .section-card,
+        .metric-card,
+        .summary-card,
+        .table-shell,
+        .empty-state {
+            background:
+                linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(255, 251, 247, 0.9)) !important;
+            box-shadow: 0 16px 34px rgba(148, 163, 184, 0.14) !important;
+        }
+
+        .mini-badge,
+        .summary-pill,
+        .fuel-header-card {
+            background: rgba(255, 255, 255, 0.82) !important;
+            border-color: rgba(148, 163, 184, 0.2) !important;
+        }
+
+        div[data-testid="stSelectbox"] > div[data-baseweb="select"] > div,
+        div[data-testid="stNumberInput"] input,
+        .stSearchbox > div,
+        .stSearchbox [data-baseweb="base-input"],
+        .stSearchbox [data-baseweb="input"],
+        .stSearchbox input,
+        .stSearchbox div[data-baseweb="input"] > div {
+            background: rgba(255, 255, 255, 0.94) !important;
+            color: #0f172a !important;
+            border-color: rgba(203, 213, 225, 0.95) !important;
+            box-shadow: 0 6px 18px rgba(148, 163, 184, 0.08) !important;
+        }
+
+        .stSearchbox input::placeholder {
+            color: #94a3b8 !important;
+        }
+
+        .hero-title span {
+            background: linear-gradient(135deg, #ea580c, #f59e0b);
+            -webkit-background-clip: text;
+            color: transparent;
+        }
+
+        .cost-card {
+            background: linear-gradient(135deg, #3b82f6, #2563eb, #1d4ed8) !important;
+            box-shadow: 0 22px 40px rgba(59, 130, 246, 0.22) !important;
+        }
+
+        [data-testid="stTabs"] [data-baseweb="tab-list"] {
+            background: rgba(255, 255, 255, 0.88) !important;
+            border-color: rgba(148, 163, 184, 0.18) !important;
+        }
+
+        [data-testid="stTabs"] [data-baseweb="tab"] {
+            color: #475569 !important;
+        }
+
+        [data-testid="stTabs"] [aria-selected="true"] {
+            color: #9a3412 !important;
+        }
+
+        div[data-testid="stToggle"] [data-baseweb="checkbox"] {
+            background: #fed7aa !important;
+            box-shadow: 0 10px 24px rgba(234, 88, 12, 0.12) !important;
+        }
+
+        div[data-testid="stToggle"] [data-baseweb="checkbox"]:not(:has(input:checked)) > div {
+            background: #ffffff !important;
+        }
+    """ if theme_mode == "light" else ""
+
     st.markdown(
         """
         <style>
+
+        header[data-testid="stHeader"] {
+            display: none !important;
+        }
+
+        footer {
+            display: none !important;
+        }
+
+        #MainMenu {
+            display: none !important;
+        }
+
+        [data-testid="stToolbar"] {
+            display: none !important;
+        }
+
+        .theme-toggle-shell {
+            display: flex;
+            justify-content: flex-end;
+            width: 100%;
+            margin-bottom: 0.45rem;
+        }
+
+        div[data-testid="stToggle"] {
+            display: flex;
+            justify-content: flex-end;
+            width: 100%;
+            margin-left: auto;
+            margin-bottom: 1rem;
+        }
+
+        div[data-testid="stToggle"] > label {
+            display: none !important;
+        }
+
+        div[data-testid="stToggle"] [data-baseweb="checkbox"] {
+            position: relative;
+            width: 64px;
+            min-width: 64px;
+            max-width: 64px;
+            height: 32px;
+            padding: 0;
+            border-radius: 999px;
+            background: #374151;
+            border: 0;
+            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.2);
+            transition: background 300ms ease, box-shadow 300ms ease;
+        }
+
+        div[data-testid="stToggle"] [data-baseweb="checkbox"]::before,
+        div[data-testid="stToggle"] [data-baseweb="checkbox"]::after {
+            content: "";
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 16px;
+            height: 16px;
+            background-repeat: no-repeat;
+            background-position: center;
+            background-size: 16px 16px;
+            transition: opacity 300ms ease;
+        }
+
+        div[data-testid="stToggle"] [data-baseweb="checkbox"]::before {
+            content: "☀";
+            left: 8px;
+            opacity: 0;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23f97316' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='4'/%3E%3Cpath d='M12 2v2'/%3E%3Cpath d='M12 20v2'/%3E%3Cpath d='m4.93 4.93 1.41 1.41'/%3E%3Cpath d='m17.66 17.66 1.41 1.41'/%3E%3Cpath d='M2 12h2'/%3E%3Cpath d='M20 12h2'/%3E%3Cpath d='m6.34 17.66-1.41 1.41'/%3E%3Cpath d='m19.07 4.93-1.41 1.41'/%3E%3C/svg%3E");
+        }
+
+        div[data-testid="stToggle"] [data-baseweb="checkbox"]::after {
+            content: "☾";
+            right: 8px;
+            opacity: 1;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='%23111827' stroke='%23111827' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3a6 6 0 1 0 9 9 9 9 0 1 1-9-9Z'/%3E%3C/svg%3E");
+        }
+
+        div[data-testid="stToggle"] [data-baseweb="checkbox"] > div {
+            position: absolute !important;
+            top: 4px !important;
+            left: 4px !important;
+            width: 24px !important;
+            height: 24px !important;
+            min-width: 24px !important;
+            margin: 0 !important;
+            border-radius: 999px !important;
+            background: #fb923c !important;
+            box-shadow: 0 8px 18px rgba(249, 115, 22, 0.22) !important;
+            transform: translateX(32px);
+            transition: transform 300ms ease, background 300ms ease, box-shadow 300ms ease;
+        }
+
+        div[data-testid="stToggle"] [data-baseweb="checkbox"] span {
+            display: none !important;
+        }
+
+        div[data-testid="stToggle"] [data-baseweb="checkbox"]:not(:has(input:checked)) {
+            background: #fed7aa;
+        }
+
+        div[data-testid="stToggle"] [data-baseweb="checkbox"]:not(:has(input:checked))::before {
+            opacity: 1;
+        }
+
+        div[data-testid="stToggle"] [data-baseweb="checkbox"]:not(:has(input:checked))::after {
+            opacity: 0;
+        }
+
+        div[data-testid="stToggle"] [data-baseweb="checkbox"]:not(:has(input:checked)) > div {
+            transform: translateX(0);
+            background: #ffffff !important;
+            box-shadow: 0 8px 18px rgba(148, 163, 184, 0.22) !important;
+        }
+
+        div[data-testid="stToggle"] [data-baseweb="checkbox"]:has(input:checked)::before {
+            opacity: 0;
+        }
+
+        div[data-testid="stToggle"] [data-baseweb="checkbox"]:has(input:checked)::after {
+            opacity: 1;
+        }
         
         :root {
             --background: #0b1120;
@@ -438,25 +691,26 @@ def inject_styles():
         }
 
         div[data-testid="stSlider"] > div[data-baseweb="slider"] {
-            padding-top: 0.9rem;
-            padding-bottom: 0.6rem;
-            pointer-events: none;
+            padding-top: 0.65rem;
+            padding-bottom: 0.25rem;
         }
 
         div[data-testid="stSlider"] [role="slider"] {
+            width: 1.15rem !important;
+            height: 1.15rem !important;
             background: linear-gradient(135deg, #f97316, #fb923c) !important;
-            border: 0 !important;
-            box-shadow: 0 2px 10px rgba(249, 115, 22, 0.35) !important;
-            pointer-events: auto !important;
+            border: 3px solid rgba(255, 247, 237, 0.95) !important;
+            box-shadow: 0 8px 18px rgba(249, 115, 22, 0.22) !important;
         }
 
         div[data-testid="stSlider"] [data-testid="stTickBar"] {
-            background: rgba(255, 255, 255, 0.16) !important;
-            pointer-events: none !important;
+            height: 0.4rem !important;
+            border-radius: 999px !important;
+            background: rgba(148, 163, 184, 0.24) !important;
         }
 
         div[data-testid="stSlider"] [data-baseweb="slider"] > div:not([role="slider"]) {
-            pointer-events: none !important;
+            border-radius: 999px !important;
         }
 
         div.stButton > button {
@@ -688,6 +942,24 @@ def inject_styles():
         }
 
         @media (max-width: 900px) {
+            .block-container {
+                padding-top: 4.75rem;
+            }
+
+            div[data-testid="stVerticalBlock"]:has(.theme-toggle-anchor) {
+                position: static !important;
+            }
+
+            div[data-testid="stVerticalBlock"]:has(.theme-toggle-anchor) div[data-testid="stToggle"] {
+                position: fixed !important;
+                top: 0.9rem !important;
+                right: 1rem !important;
+                left: auto !important;
+                width: auto !important;
+                margin: 0 !important;
+                z-index: 1000 !important;
+            }
+
             .hero-shell {
                 padding: 1.4rem;
                 border-radius: 26px;
@@ -702,8 +974,10 @@ def inject_styles():
                 grid-template-columns: repeat(2, minmax(0, 1fr));
             }
         }
+
+        __LIGHT_THEME_OVERRIDES__
         </style>
-        """,
+        """.replace("__LIGHT_THEME_OVERRIDES__", light_theme_overrides),
         unsafe_allow_html=True,
     )
 
@@ -1149,14 +1423,10 @@ def render_result_panels(route, selected_car, year_val, fuel_price, model, le_fu
 
     return final_cost
 
-
-inject_styles()
-LIVE_PRICES = get_live_fuel_prices()
-vehicle_df = load_csv_data(CSV_PATH.stat().st_mtime_ns if CSV_PATH.exists() else 0)
-model, le_fuel, le_class = load_ai_model()
-
 if "history" not in st.session_state:
     st.session_state.history = []
+if "theme_dark_toggle" not in st.session_state:
+    st.session_state.theme_dark_toggle = True
 if "departure_time" not in st.session_state:
     st.session_state.departure_time = datetime.now().replace(second=0, microsecond=0).time()
 if "departure_time_widget" not in st.session_state:
@@ -1177,6 +1447,14 @@ if "selected_route_meta" not in st.session_state:
     st.session_state.selected_route_meta = {}
 if "selected_route_history_saved" not in st.session_state:
     st.session_state.selected_route_history_saved = False
+
+st.session_state.theme_mode = "dark" if st.session_state.theme_dark_toggle else "light"
+
+inject_styles(st.session_state.theme_mode)
+LIVE_PRICES = get_live_fuel_prices()
+vehicle_df = load_csv_data(CSV_PATH.stat().st_mtime_ns if CSV_PATH.exists() else 0)
+model, le_fuel, le_class = load_ai_model()
+
 if "fuel_type_option" not in st.session_state:
     st.session_state.fuel_type_option = "BUDI 95"
 elif st.session_state.fuel_type_option not in FUEL_OPTION_META:
@@ -1212,6 +1490,16 @@ for label, price in LIVE_PRICES.items():
     </div>"""
 
 # One single markdown call with perfectly matched tags
+_, theme_toggle_col = st.columns([20, 1], gap="small")
+with theme_toggle_col:
+    st.markdown('<div class="theme-toggle-anchor"></div>', unsafe_allow_html=True)
+    st.toggle(
+        "Toggle theme",
+        key="theme_dark_toggle",
+        help="Switch between light and dark mode.",
+        label_visibility="collapsed",
+    )
+
 st.markdown(
     f"""
     <div class="hero-shell">
